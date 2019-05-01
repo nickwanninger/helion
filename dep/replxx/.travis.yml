@@ -1,0 +1,16 @@
+language: C++
+dist: xenial
+script:
+  - mkdir -p build && cd build
+  - cmake ..
+  - make
+  - cd .. && env SKIP=8bit_encoding ./tests.py
+addons:
+  apt:
+    packages:
+      - g++
+      - cmake
+      - python3-pexpect
+sudo: false
+cache:
+  ccache: true

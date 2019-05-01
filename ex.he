@@ -1,0 +1,110 @@
+# define the current module
+module foo
+
+include 'core'
+
+# some basic assignment. Fully type infered.
+# once a variable has a certain type, you may not redefine
+# it to another type
+message = 'hello' # would be of type String
+number = 30       # Number
+nothing = nil # TODO(design) figure out what to do with nil.
+
+
+
+names = new [String] 30
+
+
+# only falsey things are false and nil
+falsey = false or nil
+# everything else is "truthy"
+truthy = true or 1 or "true" or :true
+
+# use '#' for line comments
+# def to define global variables (module scope)
+
+# a function evaluates to the expression that follows.
+# if a function's return value is on the same line, use
+# a '->' to delimit the end of the argument list
+def square Int x -> x * x
+
+
+# if you use multiple lines, the break and indent is the signifier
+# of the function body's block
+def foo Int x y z
+	if x < y then z else x
+
+# because function literals, or lambdas, are the only things in the
+# language to	 use `|`, the argument list and then the
+foo = | x y z | if x < y then z else x
+
+
+# builtin types
+builtins = [Int, Float, String, Bool, Class, Module, Method, Map{K, V}, UnsafePtr]
+
+class Person
+	# must declare fields on the class. Cannot create new fields
+	# at runtime
+	name :: String
+	age :: Int
+	dead :: Bool
+	friends :: [Person]
+
+	# new is what initializes or constructs the class. Gets called
+	# after the object is allocated to initialize it
+	def new @name do
+		@dead = false
+
+	def is? -> @dead
+	def die -> @dead = false
+
+	def working? do
+		if age > 30 then true
+		else false
+
+	def print_friends do
+		for p in @friends do
+			print p.name 'is friends with' @name
+
+	def friend_names do
+		# friends is an array, it takes a function into @map which it calls
+		# with each element of the array. This will compile the funciton that
+		# is needed for that specific type, resulting in a strong type
+		# definition for the mapping function that returns the type of
+		# Person.name (string). So it starts out that we don't know the type
+		# of the argument f, but we could absolutely optimize that out nicely
+		return friends.map | f | f.name
+
+
+class MapBucket<K, V>
+	key :: K
+	val :: V
+	next :: MapBucket<K, V>
+
+class Map<K, V>
+	buckets :: [[MapBucket<K, V>]]
+
+
+bob = Person 'Bob'
+if bob then
+	print 'HE LIVES!'
+else
+	print 'bob is dead!'
+
+# functionDef  -> `def` identifier functionArgs <indent> expr <dedent>
+# functionArgs -> (TypeName identifier | identifier | _) functionArgs | _
+# expr         -> do | if | for | while | go | funcall | math | assignment
+# do           -> `do` <indent> exprs <dedent>
+# if           -> `if` expr `then` expr (`else` expr | _)
+# while        -> `while` expr expr
+# go           -> `go` funcall
+# funcall      ->
+# class        -> `class` TypeName <indent> (classBody | _) <dedent>
+# classbody    -> (classField | classMethod | _) classBody | _
+# classMethod  -> functionDef
+
+
+
+
+
+
