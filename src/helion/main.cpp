@@ -12,13 +12,12 @@ struct foo {
   int b;
 };
 
-foo *deop;
-
 int main(int argc, char **argv) {
   gc::set_stack_root(&argv);
 
+  printf("%s\n", OS_TYPE);
   int i = 0;
-  while (true) {
+  while (false) {
     i++;
     std::shared_ptr<foo> ptr;
 
