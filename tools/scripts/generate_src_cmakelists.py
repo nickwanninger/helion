@@ -17,17 +17,17 @@ set_property(TARGET gc_static PROPERTY IMPORTED_LOCATION
 footer = """
 
 
-add_library(helion-lib SHARED $<TARGET_OBJECTS:helion-obj>)
-add_library(helion-a   STATIC $<TARGET_OBJECTS:helion-obj>)
+# add_library(helion-lib SHARED $<TARGET_OBJECTS:helion-obj>)
+# add_library(helion-a   STATIC $<TARGET_OBJECTS:helion-obj>)
+#
+# target_link_libraries(helion-lib asmjit ${CMAKE_DL_LIBS} -pthread -lboost_system)
+# set_target_properties(helion-lib PROPERTIES OUTPUT_NAME helion)
+#
+#
+# target_link_libraries(helion-a asmjit ${CMAKE_DL_LIBS} -pthread -lboost_system)
+# set_target_properties(helion-a PROPERTIES OUTPUT_NAME helion)
 
-target_link_libraries(helion-lib asmjit ${CMAKE_DL_LIBS} -lgc -lgccpp -pthread -lboost_system)
-set_target_properties(helion-lib PROPERTIES OUTPUT_NAME helion)
-
-
-target_link_libraries(helion-a asmjit ${CMAKE_DL_LIBS} -lgc -lgccpp -pthread -lboost_system)
-set_target_properties(helion-a PROPERTIES OUTPUT_NAME helion)
-
-target_link_libraries(helion helion-a replxx ${CMAKE_DL_LIBS} -lgc -lgccpp -pthread -lboost_system)
+target_link_libraries(helion replxx ${CMAKE_DL_LIBS} -pthread -lboost_system)
 set_target_properties(helion PROPERTIES OUTPUT_NAME helion)
 
 """
@@ -42,24 +42,10 @@ def glb(path, recursive = True):
 with open('src/helion/CMakeLists.txt', 'w') as f:
     f.write(header)
 
-
-
-    f.write('add_library(helion-obj OBJECT\n')
+    f.write('add_executable(helion\n')
     for filename in itools.chain(glb('src/helion/**/*.cpp'),
             glb('src/helion/**/*.c'), glb('src/helion/**/*.s')):
         f.write('\t%s\n' % (filename))
-
     f.write(")\n")
     f.write("\n");
-
-    f.write('set_property(TARGET helion-obj PROPERTY POSITION_INDEPENDENT_CODE 1)\n')
-
-    f.write('add_executable(helion\n')
-    for filename in itools.chain(glb('src/*.cpp', recursive=False)):
-        f.write('\t%s\n' % (filename))
-    f.write(")\n")
-    f.write("\n");
-
-
     f.write(footer)
-

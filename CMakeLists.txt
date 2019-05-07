@@ -71,4 +71,4 @@ target_compile_options(helion PRIVATE -Wall -Wextra -Wno-unused-parameter -Wno-s
 
 
 install(TARGETS helion DESTINATION bin CONFIGURATIONS Release)
-install(TARGETS helion-lib DESTINATION lib CONFIGURATIONS Release)
+# install(TARGETS helion-lib DESTINATION lib CONFIGURATIONS Release)

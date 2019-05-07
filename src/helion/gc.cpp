@@ -18,36 +18,15 @@
 #include <algorithm>
 #include <mutex>
 
-#define GC_THREADS
-#include <gc/gc.h>
 
-extern "C" void GC_allow_register_threads();
+#define GC_DEBUG
 
-#ifdef USE_GC
-// #define GC_DEBUG
-
-
-#define allocate GC_MALLOC
-#define deallocate GC_FREE
-
-struct gc_startup {
-  gc_startup() {
-    GC_set_all_interior_pointers(1);
-    GC_INIT();
-    GC_allow_register_threads();
-  }
-};
-static gc_startup init;
-
-#else
 #define allocate helion::gc::malloc
 #define deallocate helion::gc::free
-#endif
 
 #define ROUND_UP(N, S) ((((N) + (S)-1) / (S)) * (S))
 
 void* operator new(size_t size) { return allocate(size); }
-void* operator new[](size_t size) { return allocate(size); }
 
 #ifdef __GLIBC__
 #define _NOEXCEPT _GLIBCXX_USE_NOEXCEPT
@@ -55,26 +34,14 @@ void* operator new[](size_t size) { return allocate(size); }
 
 void operator delete(void* ptr)_NOEXCEPT { deallocate(ptr); }
 
-void operator delete[](void* ptr) _NOEXCEPT { deallocate(ptr); }
-
 void operator delete(void* ptr, std::size_t s)_NOEXCEPT { deallocate(ptr); }
 
-void operator delete[](void* ptr, std::size_t s) _NOEXCEPT { deallocate(ptr); }
 
-
-
-
-/* single word (4) or double word (8) alignment */
 #define ALIGNMENT 8
 #define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
 #define PAGE_SIZE_ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
-/* rounds up to the nearest multiple of ALIGNMENT */
 #define HEADER_SIZE (ALIGN(sizeof(gc::blk_t)))
-
 #define OVERHEAD (ALIGN(sizeof(gc::heap_segment::free_header)))
-
-// define some linked list operations
-#define ll_fwd(name) ((name) = (name)->next)
 #define GET_FREE_HEADER(blk) \
   ((gc::heap_segment::free_header*)((char*)blk + HEADER_SIZE))
 #define ADJ_SIZE(given) ((given < OVERHEAD) ? OVERHEAD : ALIGN(given))
@@ -159,7 +126,9 @@ blk_t* gc::heap_segment::get_next_free(blk_t* curr) {
   }
 }
 
-static inline constexpr bool adjacent(blk_t* a, blk_t* b) { return (NEXT_BLK(a) == b); }
+static inline constexpr bool adjacent(blk_t* a, blk_t* b) {
+  return (NEXT_BLK(a) == b);
+}
 
 
 static inline blk_t* attempt_free_union(blk_t* this_blk) {
@@ -178,7 +147,7 @@ static inline blk_t* attempt_free_union(blk_t* this_blk) {
     sz += GET_SIZE(next_blk);
     SET_SIZE(this_blk, sz);
 #ifdef GC_DEBUG
-    printf("RIGHT UNION!\n");
+    // printf("RIGHT UNION!\n");
 #endif
   }
 
@@ -186,7 +155,7 @@ static inline blk_t* attempt_free_union(blk_t* this_blk) {
     size_t sz = GET_SIZE(prev_blk);
     sz += GET_SIZE(this_blk);
     SET_SIZE(prev_blk, sz);
-    free_header *old_pprev = p->prev;
+    free_header* old_pprev = p->prev;
     p->next = fh->next;
     fh->next->prev = p;
 
@@ -196,7 +165,7 @@ static inline blk_t* attempt_free_union(blk_t* this_blk) {
     p = old_pprev;
     prev_blk = GET_BLK(p);
 #ifdef GC_DEBUG
-    printf("LEFT UNION!\n");
+    // printf("LEFT UNION!\n");
 #endif
   }
 
@@ -243,7 +212,7 @@ void gc::heap_segment::free_block(blk_t* blk) {
 // define the number of pages in a block
 // TODO(optim) decide on how many pages a block should have
 //             in it.
-int gc::heap_segment::page_count = 1;
+int gc::heap_segment::page_count = 8;
 
 /**
  * allocate a new block with a minimum number of bytes in the heap. It will
@@ -261,8 +230,8 @@ heap_segment* gc::heap_segment::alloc(size_t size) {
   int fd = open("heap", O_RDWR | O_CREAT, (mode_t)0600);
   lseek(fd, size, SEEK_SET);
   write(fd, "", 1);
-  void* mapped_region = mmap(nullptr, size, PROT_READ | PROT_WRITE,
-                             MAP_SHARED, fd, 0);
+  void* mapped_region =
+      mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 #endif
 
 
@@ -341,6 +310,7 @@ void* gc::heap_segment::malloc(size_t size) {
 
   SET_USED(blk);
 #ifdef GC_DEBUG
+  printf("ALLOC ");
   dump();
 #endif
   return (char*)blk + HEADER_SIZE;
@@ -436,7 +406,7 @@ top:
 
 void gc::free(void* ptr) {
 #ifdef GC_DEBUG
-  printf("<<<<< FREEING %p >>>>>\n", ptr);
+  // printf("<<<<< FREEING %p >>>>>\n", ptr);
 #endif
   heap_segment* hp = find_heap(ptr);
   blk_t* block;
@@ -455,6 +425,7 @@ void gc::free(void* ptr) {
 
 #ifdef GC_DEBUG
   // and after the free...
+  printf("FREE  ");
   hp->dump();
 #endif
   return;  // return before throwing that error :)

@@ -9,30 +9,26 @@ set_property(TARGET gc_static PROPERTY IMPORTED_LOCATION
     ${PROJECT_SOURCE_DIR}/src/bdwgc/.libs/libgccpp.a
     )
 
-add_library(helion-obj OBJECT
+add_executable(helion
 	src/helion/text.cpp
 	src/helion/tokenizer.cpp
 	src/helion/gc.cpp
-)
-
-set_property(TARGET helion-obj PROPERTY POSITION_INDEPENDENT_CODE 1)
-add_executable(helion
-	src/main.cpp
+	src/helion/main.cpp
 )
 
 
 
 
-add_library(helion-lib SHARED $<TARGET_OBJECTS:helion-obj>)
-add_library(helion-a   STATIC $<TARGET_OBJECTS:helion-obj>)
+# add_library(helion-lib SHARED $<TARGET_OBJECTS:helion-obj>)
+# add_library(helion-a   STATIC $<TARGET_OBJECTS:helion-obj>)
+#
+# target_link_libraries(helion-lib asmjit ${CMAKE_DL_LIBS} -pthread -lboost_system)
+# set_target_properties(helion-lib PROPERTIES OUTPUT_NAME helion)
+#
+#
+# target_link_libraries(helion-a asmjit ${CMAKE_DL_LIBS} -pthread -lboost_system)
+# set_target_properties(helion-a PROPERTIES OUTPUT_NAME helion)
 
-target_link_libraries(helion-lib asmjit ${CMAKE_DL_LIBS} -lgc -lgccpp -pthread -lboost_system)
-set_target_properties(helion-lib PROPERTIES OUTPUT_NAME helion)
-
-
-target_link_libraries(helion-a asmjit ${CMAKE_DL_LIBS} -lgc -lgccpp -pthread -lboost_system)
-set_target_properties(helion-a PROPERTIES OUTPUT_NAME helion)
-
-target_link_libraries(helion helion-a replxx ${CMAKE_DL_LIBS} -lgc -lgccpp -pthread -lboost_system)
+target_link_libraries(helion replxx ${CMAKE_DL_LIBS} -pthread -lboost_system)
 set_target_properties(helion PROPERTIES OUTPUT_NAME helion)
 
