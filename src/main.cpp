@@ -12,8 +12,13 @@ int main(int argc, char **argv) {
   void **ptrs = (void**)gc::malloc(sizeof(void*) * count);
 
   for (int i = 0; i < count; i++) {
-    printf("%d %p\n", i, ptrs + i);
     ptrs[i] = gc::malloc(i);
+    memset(ptrs[i], 'a', i);
+  }
+
+
+  for (int i = 0; i < count; i++) {
+    gc::free(ptrs[i]);
   }
   return 0;
 }

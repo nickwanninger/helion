@@ -7,12 +7,14 @@
 // single_client_gc_alloc do the same, but are not thread-safe even
 // if the collector is compiled to be thread-safe.  They also try to
 // do more of the allocation in-line.
+#include <fcntl.h>
 #include <gc/gc_allocator.h>
 #include <helion/gc.h>
 #include <pthread.h>
 #include <setjmp.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
+#include <unistd.h>
 #include <algorithm>
 #include <mutex>
 
@@ -91,10 +93,67 @@ using namespace helion::gc;
 
 
 
+static std::mutex heaps_lock;
+static gc::heap_segment* heaps = nullptr;
+/**
+ * add a heap to the heap tree for efficient lookup
+ * of a pointer within the set of all GC owned heaps
+ */
+static void add_heap(gc::heap_segment* hs) {
+  // unfortunately, adding a heap requires a global lock
+  // TODO possibly do some atomic stuff?
+  std::unique_lock lock(heaps_lock);
+  // initial setup case
+  if (heaps == nullptr) {
+    heaps = hs;
+    return;
+  }
 
-static void add_heap(gc::heap_segment *hs) {
+  heaps->store_heap_in_tree(hs);
 }
 
+
+
+static gc::heap_segment* find_heap(void* ptr) {
+  auto* hs = heaps;
+
+  while (true) {
+    if (hs == 0) return nullptr;
+    int cmp = hs->check_pointer(ptr);
+    if (cmp < 0) hs = hs->left;
+    if (cmp > 0) hs = hs->right;
+    if (cmp == 0) break;
+  }
+  return hs;
+}
+
+void gc::heap_segment::store_heap_in_tree(heap_segment* hs) {
+  // won't happen, but just to be safe...
+  if (hs == this) return;
+  int cmp = (char*)hs - (char*)this;
+  if (cmp < 1) {
+    if (left == nullptr) {
+      left = hs;
+    } else {
+      left->store_heap_in_tree(hs);
+    }
+  } else {
+    if (right == nullptr) {
+      right = hs;
+    } else {
+      right->store_heap_in_tree(hs);
+    }
+  }
+}
+
+
+
+/**
+ * free_block frees a block... of course
+ */
+void gc::heap_segment::free_block(blk_t *blk) {
+  SET_FREE(blk);
+}
 
 
 // define the number of pages in a block
@@ -109,32 +168,54 @@ int gc::heap_segment::page_count = 1;
 heap_segment* gc::heap_segment::alloc(size_t size) {
   heap_segment* b = nullptr;
   size = PAGE_SIZE_ALIGN(size);
-  printf("allocating block of size %zx\n", size);
 
   void* mapped_region = mmap(nullptr, size, PROT_READ | PROT_WRITE,
                              MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 
-  printf("%p %zu\n", mapped_region, size);
+
+  /*
+  int fd = open("heap", O_RDWR | O_CREAT, (mode_t)0600);
+  lseek(fd, size, SEEK_SET);
+  write(fd, "", 1);
+  void* mapped_region = mmap(nullptr, size, PROT_READ | PROT_WRITE,
+                             MAP_SHARED, fd, 0);
+                             */
+
 
   b = (heap_segment*)mapped_region;
   b->size = size;
 
 
   size_t real_size = size - ALIGN(sizeof(heap_segment));
-  printf("++ %zx\n", real_size);
   // the first thing that needs to be setup in a block segment is
   // the initial header.
   blk_t* hdr = (blk_t*)(b + 1);
   b->first_block = hdr;
   SET_FREE(hdr);
-  SET_SIZE(hdr, size - ALIGN(sizeof(heap_segment)));
+  SET_SIZE(hdr, real_size);
 
   free_header* fh = GET_FREE_HEADER(hdr);
   fh->next = &b->free_entry;
   fh->prev = &b->free_entry;
   b->free_entry.next = fh;
   b->free_entry.prev = fh;
+  add_heap(b);
   return b;
+}
+
+
+blk_t* gc::heap_segment::find_block(void* ptr) {
+
+  blk_t* top = (blk_t*)((char*)this + size);
+  blk_t* c = first_block;
+  for (; c < top; c = NEXT_BLK(c)) {
+    size_t sz = GET_SIZE(c);
+    char *data_base = (char*)c + HEADER_SIZE;
+
+    if (ptr == data_base || (ptr >= data_base && ((char*)c + sz) > ptr)) return c;
+    printf("%p %p\n", c, data_base);
+  }
+  return nullptr;
 }
 
 #define ANSI_COLOR_RED "\x1b[31m"
@@ -267,6 +348,31 @@ top:
 
 
 
-void gc::free(void* ptr) { printf("NEED TO FREE\n"); }
+void gc::free(void* ptr) {
+  printf("<<<<< FREEING %p >>>>>\n", ptr);
+  heap_segment* hp = find_heap(ptr);
+  blk_t* block;
+
+  if (hp == nullptr) {
+    goto invalid_pointer_error;
+  }
+  // dump the heap before...
+  hp->dump();
+  printf("%p\n", hp);
+
+  // now we have a valid heap, we need to find the block within it...
+  block = hp->find_block(ptr);
+  if (block == nullptr) {
+    goto invalid_pointer_error;
+  }
+
+  hp->free_block(block);
+
+  // and after the free...
+  hp->dump();
+  return;  // return before throwing that error :)
+invalid_pointer_error:
+  throw std::logic_error("Invalid pointer (non-block) passed to gc::free");
+}
 
 void gc::collect(void) {}

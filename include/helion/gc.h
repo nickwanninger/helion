@@ -54,6 +54,7 @@ namespace helion {
       static heap_segment *alloc(size_t size = (4096 * page_count));
 
       void *malloc(size_t);
+      void free_block(blk_t*);
       using header = size_t;
 
       void dump(void);
@@ -67,6 +68,15 @@ namespace helion {
       // pointer is not in the heap.
       blk_t *find_block(void *);
 
+
+      void store_heap_in_tree(heap_segment*);
+
+
+      inline int check_pointer(void *ptr) {
+        if (ptr < this) return -1;
+        if (ptr > (char*)this + size) return 1;
+        return 0;
+      }
 
       /**
        * returns the first usable byte in the heap
