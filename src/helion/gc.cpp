@@ -24,6 +24,9 @@
 extern "C" void GC_allow_register_threads();
 
 #ifdef USE_GC
+// #define GC_DEBUG
+
+
 #define allocate GC_MALLOC
 #define deallocate GC_FREE
 
@@ -147,12 +150,93 @@ void gc::heap_segment::store_heap_in_tree(heap_segment* hs) {
 }
 
 
+blk_t* gc::heap_segment::get_next_free(blk_t* curr) {
+  curr = NEXT_BLK(curr);
+  while (1) {
+    if ((void*)curr >= mem_heap_hi()) return NULL;
+    if (IS_FREE(curr)) return curr;
+    curr = NEXT_BLK(curr);
+  }
+}
 
+static inline constexpr bool adjacent(blk_t* a, blk_t* b) { return (NEXT_BLK(a) == b); }
+
+
+static inline blk_t* attempt_free_union(blk_t* this_blk) {
+  using free_header = gc::heap_segment::free_header;
+  free_header* fh = GET_FREE_HEADER(this_blk);
+  free_header* p = fh->prev;
+  free_header* n = fh->next;
+  blk_t* prev_blk = GET_BLK(p);
+  blk_t* next_blk = GET_BLK(n);
+
+
+  if (adjacent(this_blk, next_blk)) {
+    size_t sz = GET_SIZE(this_blk);
+    fh->next = n->next;
+    n->next->prev = fh;
+    sz += GET_SIZE(next_blk);
+    SET_SIZE(this_blk, sz);
+#ifdef GC_DEBUG
+    printf("RIGHT UNION!\n");
+#endif
+  }
+
+  while (adjacent(prev_blk, this_blk)) {
+    size_t sz = GET_SIZE(prev_blk);
+    sz += GET_SIZE(this_blk);
+    SET_SIZE(prev_blk, sz);
+    free_header *old_pprev = p->prev;
+    p->next = fh->next;
+    fh->next->prev = p;
+
+    this_blk = prev_blk;
+    fh = p;
+
+    p = old_pprev;
+    prev_blk = GET_BLK(p);
+#ifdef GC_DEBUG
+    printf("LEFT UNION!\n");
+#endif
+  }
+
+
+
+  return this_blk;
+}
 /**
- * free_block frees a block... of course
+ * free_block frees a block... of course, but it also unions
+ * adjacent free blocks into a single, larger free block. It also updates
+ * the free list
  */
-void gc::heap_segment::free_block(blk_t *blk) {
-  SET_FREE(blk);
+void gc::heap_segment::free_block(blk_t* blk) {
+  // update the state on the newly freed block.
+  free_header* hdr = GET_FREE_HEADER(blk);
+
+  hdr->next = nullptr;
+  hdr->prev = nullptr;
+
+  // now we have to f24d the next free block so we can put ourselved
+  // in the list of freed nodes (and so we can union with adjacent nodes)
+  blk_t* next_free = get_next_free(blk);
+  // if we were at the end of the heap...
+  if (next_free == NULL) {
+    hdr->next = &free_entry;
+    hdr->prev = hdr->next->prev;
+    hdr->next->prev = hdr;
+    hdr->prev->next = hdr;
+    blk = attempt_free_union(blk);
+    SET_FREE(blk);
+  } else {
+    free_header* succ = GET_FREE_HEADER(next_free);
+    hdr->next = succ;
+    hdr->prev = succ->prev;
+    hdr->prev->next = hdr;
+    succ->prev = hdr;
+
+    blk = attempt_free_union(blk);
+    SET_FREE(blk);
+  }
 }
 
 
@@ -168,18 +252,18 @@ int gc::heap_segment::page_count = 1;
 heap_segment* gc::heap_segment::alloc(size_t size) {
   heap_segment* b = nullptr;
   size = PAGE_SIZE_ALIGN(size);
+#define MAP_HEAP_INTO_FILE
 
+#ifndef MAP_HEAP_INTO_FILE
   void* mapped_region = mmap(nullptr, size, PROT_READ | PROT_WRITE,
                              MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-
-
-  /*
+#else
   int fd = open("heap", O_RDWR | O_CREAT, (mode_t)0600);
   lseek(fd, size, SEEK_SET);
   write(fd, "", 1);
   void* mapped_region = mmap(nullptr, size, PROT_READ | PROT_WRITE,
                              MAP_SHARED, fd, 0);
-                             */
+#endif
 
 
   b = (heap_segment*)mapped_region;
@@ -205,15 +289,14 @@ heap_segment* gc::heap_segment::alloc(size_t size) {
 
 
 blk_t* gc::heap_segment::find_block(void* ptr) {
-
   blk_t* top = (blk_t*)((char*)this + size);
   blk_t* c = first_block;
   for (; c < top; c = NEXT_BLK(c)) {
     size_t sz = GET_SIZE(c);
-    char *data_base = (char*)c + HEADER_SIZE;
+    char* data_base = (char*)c + HEADER_SIZE;
 
-    if (ptr == data_base || (ptr >= data_base && ((char*)c + sz) > ptr)) return c;
-    printf("%p %p\n", c, data_base);
+    if (ptr == data_base || (ptr >= data_base && ((char*)c + sz) > ptr))
+      return c;
   }
   return nullptr;
 }
@@ -230,7 +313,7 @@ void gc::heap_segment::dump(void) {
     printf("%s%li%s ", color, GET_SIZE(c), ANSI_COLOR_RESET);
     printf(ANSI_COLOR_RESET);
   }
-  printf("\n\n");
+  printf("\n");
 }
 
 
@@ -257,7 +340,9 @@ void* gc::heap_segment::malloc(size_t size) {
   blk = split_block;
 
   SET_USED(blk);
+#ifdef GC_DEBUG
   dump();
+#endif
   return (char*)blk + HEADER_SIZE;
 }
 
@@ -342,6 +427,7 @@ top:
     goto top;
   }
 
+
   return p;
 }
 
@@ -349,16 +435,15 @@ top:
 
 
 void gc::free(void* ptr) {
+#ifdef GC_DEBUG
   printf("<<<<< FREEING %p >>>>>\n", ptr);
+#endif
   heap_segment* hp = find_heap(ptr);
   blk_t* block;
 
   if (hp == nullptr) {
     goto invalid_pointer_error;
   }
-  // dump the heap before...
-  hp->dump();
-  printf("%p\n", hp);
 
   // now we have a valid heap, we need to find the block within it...
   block = hp->find_block(ptr);
@@ -368,8 +453,10 @@ void gc::free(void* ptr) {
 
   hp->free_block(block);
 
+#ifdef GC_DEBUG
   // and after the free...
   hp->dump();
+#endif
   return;  // return before throwing that error :)
 invalid_pointer_error:
   throw std::logic_error("Invalid pointer (non-block) passed to gc::free");

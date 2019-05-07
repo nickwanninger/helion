@@ -70,6 +70,7 @@ namespace helion {
 
 
       void store_heap_in_tree(heap_segment*);
+      blk_t *get_next_free(blk_t *);
 
 
       inline int check_pointer(void *ptr) {
