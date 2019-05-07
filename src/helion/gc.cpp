@@ -16,6 +16,7 @@
 #include <sys/resource.h>
 #include <unistd.h>
 #include <algorithm>
+#include <helion/gcconfig.h>
 #include <mutex>
 
 
@@ -434,3 +435,71 @@ invalid_pointer_error:
 }
 
 void gc::collect(void) {}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#if defined(SEARCH_FOR_DATA_START)
+  /* The I386 case can be handled without a search.  The Alpha case     */
+  /* used to be handled differently as well, but the rules changed      */
+  /* for recent Linux versions.  This seems to be the easiest way to    */
+  /* cover all versions.                                                */
+
+# if defined(LINUX) || defined(HURD)
+    /* Some Linux distributions arrange to define __data_start.  Some   */
+    /* define data_start as a weak symbol.  The latter is technically   */
+    /* broken, since the user program may define data_start, in which   */
+    /* case we lose.  Nonetheless, we try both, preferring __data_start.*/
+    /* We assume gcc-compatible pragmas.                                */
+    EXTERN_C_BEGIN
+#   pragma weak __data_start
+#   pragma weak data_start
+    extern int __data_start[], data_start[];
+    EXTERN_C_END
+# endif /* LINUX */
+
+  ptr_t GC_data_start = NULL;
+
+  GC_INNER void GC_init_linux_data_start(void)
+  {
+    ptr_t data_end = DATAEND;
+
+#   if (defined(LINUX) || defined(HURD)) && !defined(IGNORE_PROG_DATA_START)
+      /* Try the easy approaches first: */
+      if (COVERT_DATAFLOW(__data_start) != 0) {
+        GC_data_start = (ptr_t)(__data_start);
+      } else {
+        GC_data_start = (ptr_t)(data_start);
+      }
+      if (COVERT_DATAFLOW(GC_data_start) != 0) {
+        if ((word)GC_data_start > (word)data_end)
+          ABORT_ARG2("Wrong __data_start/_end pair",
+                     ": %p .. %p", (void *)GC_data_start, (void *)data_end);
+        return;
+      }
+#     ifdef DEBUG_ADD_DEL_ROOTS
+        GC_log_printf("__data_start not provided\n");
+#     endif
+#   endif /* LINUX */
+
+    if (GC_no_dls) {
+      /* Not needed, avoids the SIGSEGV caused by       */
+      /* GC_find_limit which complicates debugging.     */
+      GC_data_start = data_end; /* set data root size to 0 */
+      return;
+    }
+
+    GC_data_start = (ptr_t)GC_find_limit(data_end, FALSE);
+  }
+#endif /* SEARCH_FOR_DATA_START */
