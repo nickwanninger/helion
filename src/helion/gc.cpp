@@ -22,8 +22,13 @@
 
 #define GC_DEBUG
 
-#define allocate helion::gc::malloc
-#define deallocate helion::gc::free
+// #define allocate helion::gc::malloc
+// #define deallocate helion::gc::free
+
+
+
+#define allocate ::malloc
+#define deallocate ::free
 
 #define ROUND_UP(N, S) ((((N) + (S)-1) / (S)) * (S))
 
@@ -213,16 +218,17 @@ void gc::heap_segment::free_block(blk_t* blk) {
 // define the number of pages in a block
 // TODO(optim) decide on how many pages a block should have
 //             in it.
-int gc::heap_segment::page_count = 8;
+int gc::heap_segment::page_count = 1;
 
 /**
  * allocate a new block with a minimum number of bytes in the heap. It will
  * always allocate 1 extra page for administration overhead.
  */
 heap_segment* gc::heap_segment::alloc(size_t size) {
+  printf("allocate new heap\n");
   heap_segment* b = nullptr;
   size = PAGE_SIZE_ALIGN(size);
-#define MAP_HEAP_INTO_FILE
+  // #define MAP_HEAP_INTO_FILE
 
 #ifndef MAP_HEAP_INTO_FILE
   void* mapped_region = mmap(nullptr, size, PROT_READ | PROT_WRITE,
@@ -237,6 +243,8 @@ heap_segment* gc::heap_segment::alloc(size_t size) {
 
 
   b = (heap_segment*)mapped_region;
+  // initialize the heap segment
+  new (b) heap_segment();
   b->size = size;
 
 
@@ -278,23 +286,35 @@ blk_t* gc::heap_segment::find_block(void* ptr) {
 void gc::heap_segment::dump(void) {
   blk_t* top = (blk_t*)((char*)this + size);
   blk_t* c = first_block;
+  printf("   %p: [", this);
+  if (full) {
+    printf("1");
+  } else {
+    printf("0");
+  }
+  printf("] ");
   for (; c < top; c = NEXT_BLK(c)) {
     auto color = IS_FREE(c) ? ANSI_COLOR_GREEN : ANSI_COLOR_RED;
     printf("%s%li%s ", color, GET_SIZE(c), ANSI_COLOR_RESET);
     printf(ANSI_COLOR_RESET);
   }
   printf("\n");
+
+  if (left != nullptr) left->dump();
+  if (right != nullptr) right->dump();
 }
 
 
 
 void* gc::heap_segment::malloc(size_t size) {
+  heaps->dump();
   size = ADJ_SIZE(size);
 
   free_header* fit = find_fit(size);
   if (fit == nullptr) {
     return nullptr;
   }
+
 
   // at this point, we need to split the block, and insert the
   blk_t* blk = GET_BLK(fit);
@@ -311,8 +331,8 @@ void* gc::heap_segment::malloc(size_t size) {
 
   SET_USED(blk);
 #ifdef GC_DEBUG
-  printf("ALLOC ");
-  dump();
+  printf("ALLOC %zu\n", size);
+  heaps->dump();
 #endif
   return (char*)blk + HEADER_SIZE;
 }
@@ -356,11 +376,44 @@ gc::heap_segment::free_header* gc::heap_segment::find_fit(size_t size) {
   return nullptr;
 }
 
+
+
 void* gc::heap_segment::mem_heap_lo(void) { return first_block; }
 void* gc::heap_segment::mem_heap_hi(void) {
   return (void*)((char*)this + size);
 }
 
+
+static gc::heap_segment* walk_heaps_for_usable(size_t sz, gc::heap_segment *h) {
+  // base case, heap not found
+  if (h == nullptr) return nullptr;
+
+
+  std::unique_lock lock(h->lock);
+
+
+  auto fit = h->find_fit(sz);
+
+  if (fit != nullptr) {
+    printf("reuse\n");
+    h->full = false;
+    return h;
+  }
+
+  auto l = walk_heaps_for_usable(sz, h->left);
+  if (l != nullptr) return l; 
+
+  auto r = walk_heaps_for_usable(sz, h->right);
+  if (r != nullptr) return r; 
+
+
+  return nullptr;
+}
+
+static gc::heap_segment* walk_heaps_for_usable(size_t sz) {
+  auto *hp = walk_heaps_for_usable(sz, heaps);
+  return hp;
+}
 
 
 
@@ -374,27 +427,44 @@ void gc::set_stack_root(void* sb) {
 }
 
 void* gc::malloc(size_t s) {
+top:
   /*
    * allocation requires a heap on the current thread.
    */
   if (heap == nullptr) {
-    heap = gc::heap_segment::alloc();
+    size_t hs = std::max(s, (size_t)(gc::heap_segment::page_count+1) * 4096);
+    heap = gc::heap_segment::alloc(hs);
   }
-top:
   /*
    * attempt to allocate the memory in the current heap segment.
    */
+  heap->lock.lock();
   void* p = heap->malloc(s);
+  heap->lock.unlock();
   if (p == nullptr) {
     // if the pointer was null, we can assume that there was no
     // space to allocate that memory in the current heap. So it
     // is up to the current allocation call to move the current
     // heap to the heap tree. Then we either allocate a new heap
     // in this function and re-attempt the allocation
-    printf("OLD HEAP, PUT IN SOME KIND OF TREE: %p\n", heap);
-    s = std::max(s, (size_t)gc::heap_segment::page_count * 4096);
-    exit(-1);
-    heap = gc::heap_segment::alloc();
+    heap->lock.lock();
+    heap->full = true;
+    heap->lock.unlock();
+
+
+    heaps_lock.lock();
+    auto found = walk_heaps_for_usable(s);
+    heaps_lock.unlock();
+
+    size_t hs = std::max(s, (size_t)(gc::heap_segment::page_count+1) * 4096);
+
+    if (found == nullptr) {
+      printf("%zu\n", hs);
+      heap = gc::heap_segment::alloc(hs);
+    } else {
+      heap = found;
+    }
+    heaps->dump();
     goto top;
   }
 
@@ -416,6 +486,8 @@ void gc::free(void* ptr) {
     goto invalid_pointer_error;
   }
 
+  hp->lock.lock();
+
   // now we have a valid heap, we need to find the block within it...
   block = hp->find_block(ptr);
   if (block == nullptr) {
@@ -423,14 +495,17 @@ void gc::free(void* ptr) {
   }
 
   hp->free_block(block);
+  hp->full = false;
 
 #ifdef GC_DEBUG
   // and after the free...
-  printf("FREE  ");
-  hp->dump();
+  printf("FREE\n");
+  heaps->dump();
 #endif
+  hp->lock.unlock();
   return;  // return before throwing that error :)
 invalid_pointer_error:
+  hp->lock.unlock();
   throw std::logic_error("Invalid pointer (non-block) passed to gc::free");
 }
 
@@ -445,7 +520,7 @@ void gc::collect(void) {}
 /* for recent Linux versions.  This seems to be the easiest way to    */
 /* cover all versions.                                                */
 
-#if defined(LINUX) || defined(HURD)
+#if defined(LINUX)
 /* Some Linux distributions arrange to define __data_start.  Some   */
 /* define data_start as a weak symbol.  The latter is technically   */
 /* broken, since the user program may define data_start, in which   */
@@ -464,7 +539,7 @@ ptr_t GC_data_start = NULL;
 void GC_init_linux_data_start(void) {
   ptr_t data_end = DATAEND;
 
-#if (defined(LINUX) || defined(HURD)) && !defined(IGNORE_PROG_DATA_START)
+#if (defined(LINUX)) && !defined(IGNORE_PROG_DATA_START)
   /* Try the easy approaches first: */
   if (COVERT_DATAFLOW(__data_start) != 0) {
     GC_data_start = (ptr_t)(__data_start);
@@ -473,8 +548,8 @@ void GC_init_linux_data_start(void) {
   }
   if (COVERT_DATAFLOW(GC_data_start) != 0) {
     if ((size_t)GC_data_start > (size_t)data_end) {
-      printf("Wrong __data_start/_end pair: %p .. %p",
-                 (void*)GC_data_start, (void*)data_end);
+      printf("Wrong __data_start/_end pair: %p .. %p", (void*)GC_data_start,
+             (void*)data_end);
       exit(-1);
     }
 
@@ -490,8 +565,7 @@ void GC_init_linux_data_start(void) {
     GC_data_start = data_end;
     return;
   }
-
-  GC_data_start = (ptr_t)GC_find_limit(data_end, false);
   */
-}
+
+  // GC_data_start = (ptr_t)GC_find_limit(data_end, false);
 #endif /* SEARCH_FOR_DATA_START */

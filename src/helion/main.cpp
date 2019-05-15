@@ -6,28 +6,24 @@
 using namespace helion;
 
 #include <gc/gc.h>
+#include <unordered_map>
+#include <vector>
+
+
+int *deopt;
 
 struct foo {
-  int a;
-  int b;
+  int i;
+  int j;
 };
 
-#ifdef X86_64
-#error "aaaaa"
-#endif
-
 int main(int argc, char **argv) {
-  gc::set_stack_root(&argv);
-
-  printf("%s %p %p\n", MACH_TYPE, DATASTART, DATAEND);
-  int i = 0;
-  while (false) {
-    i++;
-    std::shared_ptr<foo> ptr;
-
-    ptr = std::make_shared<foo>();
-    ptr->a = i;
-    printf("%d\n", ptr->a);
+  text src = read_file(argv[1]);
+  tokenizer t(src);
+  while (true) {
+    auto tok = t.lex();
+    if (tok.type == tok_eof) break;
+    puts("       Tok:", tok);
   }
   return 0;
 }

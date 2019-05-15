@@ -35,7 +35,7 @@ namespace helion {
 
 
   template <typename... Args>
-  inline void puts(Args const &... args) {
+  inline void puts(Args ... args) {
     (void)(int[]){0, ((void)(std::cout << args << " "), 0)...};
     std::cout << std::endl;
   }

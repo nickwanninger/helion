@@ -47,38 +47,27 @@ namespace helion {
       static int page_count;
       free_header free_entry;
       blk_t *first_block;
-
+      std::mutex lock;
+      bool full = false;
       heap_segment *left = nullptr;
       heap_segment *right = nullptr;
 
       static heap_segment *alloc(size_t size = (4096 * page_count));
 
       void *malloc(size_t);
-      void free_block(blk_t*);
-      using header = size_t;
-
+      void free_block(blk_t *);
       void dump(void);
-
-
       blk_t *split(blk_t *, size_t);
-
-
-
       // finds the block for a given pointer. Returns nullptr if the
       // pointer is not in the heap.
       blk_t *find_block(void *);
-
-
-      void store_heap_in_tree(heap_segment*);
+      void store_heap_in_tree(heap_segment *);
       blk_t *get_next_free(blk_t *);
-
-
       inline int check_pointer(void *ptr) {
         if (ptr < this) return -1;
-        if (ptr > (char*)this + size) return 1;
+        if (ptr > (char *)this + size) return 1;
         return 0;
       }
-
       /**
        * returns the first usable byte in the heap
        */
@@ -103,7 +92,6 @@ namespace helion {
     void collect(void);
   }  // namespace gc
 }  // namespace helion
-
 
 
 
