@@ -117,19 +117,17 @@ top:
    * or dedent.
    */
   {
-
     if (depth_delta > 0) {
       depth_delta--;
       depth++;
-      printf("INDENT\n");
+      // printf("INDENT\n");
       return emit(tok_indent);
     }
     if (depth > 0) {
-
       if (depth_delta < 0) {
         depth_delta++;
         depth--;
-        printf("DEDENT\n");
+        // printf("DEDENT\n");
         return emit(tok_dedent);
       }
     }
@@ -150,13 +148,12 @@ top:
         // if we aren't at the start of an indentation, (depth==0), we need to
         // figure out what the indentation is, and set that to needs_to_dedent.
         if (is_space(peek())) {
-
           text spaces = accept_run(" \t");
 
           int indent_len = indent.size();
           int spaces_len = spaces.size();
-          // first check is if the space char count is a multiple of the indentation
-          // char count.
+          // first check is if the space char count is a multiple of the
+          // indentation char count.
           if (spaces_len % indent_len != 0) {
             throw std::logic_error("invalid indentation");
           }
@@ -188,6 +185,8 @@ top:
 
 
   int32_t c = next();
+
+  // std::cout << "LINE:" << get_line(index) << std::endl;
 
 
   if (c == '\n') {
@@ -432,6 +431,19 @@ top:
   }
 
   return emit(type, symbol);
+}
+
+
+
+text tokenizer::get_line(long ind) {
+  text &src = *source;
+  long start, end;
+  start = end = ind;
+  text line;
+  while (start - 1 >= 0 && src[start - 1] != '\n') start--;
+  while (end + 1 <= source->size() && src[end] != '\n') end++;
+  for (int i = start; i < end; i++) line += src[i];
+  return line;
 }
 
 

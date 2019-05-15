@@ -23,7 +23,7 @@ int main(int argc, char **argv) {
   while (true) {
     auto tok = t.lex();
     if (tok.type == tok_eof) break;
-    puts("       Tok:", tok);
+    puts("Tok:", tok);
   }
   return 0;
 }

@@ -89,6 +89,7 @@ namespace helion {
     void panic(std::string msg);
 
    public:
+    text get_line(long);
     explicit tokenizer(text);
     token lex();
   };
