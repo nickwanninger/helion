@@ -31,8 +31,6 @@ add_definitions(-DUSE_GC=true)
 # add_definitions(-DASMJIT_CUSTOM_REALLOC=GC_REALLOC)
 # add_definitions(-DASMJIT_CUSTOM_FREE=GC_FREE)
 
-
-
 # build dependencies before setting up project deets
 add_subdirectory(dep/libuv)
 
@@ -51,7 +49,7 @@ set(REPLXX_BuildExamples OFF)
 link_directories(/usr/local/lib)
 include_directories(/usr/local/include)
 include_directories(dep/bdwgc/include)
-# include_directories(dep/libuv/include)
+include_directories(dep/libuv/include)
 
 
 set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")

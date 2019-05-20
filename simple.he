@@ -2,5 +2,3 @@
 def square x
 	x * x
 end
-
-square square x

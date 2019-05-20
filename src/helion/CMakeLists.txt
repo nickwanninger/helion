@@ -22,13 +22,13 @@ add_executable(helion
 # add_library(helion-lib SHARED $<TARGET_OBJECTS:helion-obj>)
 # add_library(helion-a   STATIC $<TARGET_OBJECTS:helion-obj>)
 #
-# target_link_libraries(helion-lib asmjit ${CMAKE_DL_LIBS} -pthread -lboost_system)
+# target_link_libraries(helion-lib uv_a asmjit ${CMAKE_DL_LIBS} -pthread -lboost_system)
 # set_target_properties(helion-lib PROPERTIES OUTPUT_NAME helion)
 #
 #
-# target_link_libraries(helion-a asmjit ${CMAKE_DL_LIBS} -pthread -lboost_system)
+# target_link_libraries(helion-a uv_a asmjit ${CMAKE_DL_LIBS} -pthread -lboost_system)
 # set_target_properties(helion-a PROPERTIES OUTPUT_NAME helion)
 
-target_link_libraries(helion replxx ${CMAKE_DL_LIBS} -pthread -lboost_system)
+target_link_libraries(helion uv_a replxx ${CMAKE_DL_LIBS} -pthread -lboost_system)
 set_target_properties(helion PROPERTIES OUTPUT_NAME helion)
 
