@@ -43,12 +43,32 @@ token::token(uint8_t t, text v, std::shared_ptr<text> src, size_t l, size_t c) {
 
 tokenizer::tokenizer(text src) {
   source = std::make_shared<text>(src);
+  tokens = std::make_shared<std::vector<token>>();
   index = 0;
 }
 
 
+
+token tokenizer::get(size_t i) {
+  if (i < 0) {
+    return token(tok_eof, "", nullptr, 0, 0);
+  }
+
+  if (i >= tokens->size()) {
+    if (!done) {
+      lex();
+      return get(i);
+    } else {
+      return token(tok_eof, "", nullptr, 0, 0);
+    }
+  }
+  return tokens->at(i);
+}
+
 token tokenizer::emit(uint8_t t, text v) {
-  return token(t, v, source, line, column);
+  token tok(t, v, source, line, column);
+  tokens->push_back(tok);
+  return tok;
 }
 
 token tokenizer::emit(uint8_t t) { return emit(t, ""); }
@@ -76,7 +96,6 @@ bool in_charset(rune c, const text set) {
   for (int i = 0; set[i]; i++) {
     if (set[i] == c) return true;
   }
-
   return false;
 }
 
@@ -110,13 +129,14 @@ top:
 
 
 
+#ifdef DO_INDENT
   /**
    * handle indentation and dedents.
    * single newline lines are removed by the newline parser.
    * if we get here, and the column == 0, we need to check if we indent
    * or dedent.
    */
-  {
+  if (group_depth == 0) {
     if (depth_delta > 0) {
       depth_delta--;
       depth++;
@@ -172,7 +192,6 @@ top:
           }
           depth_delta = nd - depth;
           goto top;
-          printf("%d\n", spaces.size());
         } else {
           depth_delta = -depth;
           goto top;
@@ -181,7 +200,7 @@ top:
     }
   }
 
-
+#endif
 
 
   int32_t c = next();
@@ -192,6 +211,9 @@ top:
   if (c == '\n') {
     while (peek() == '\n') {
       c = next();
+    }
+    if (group_depth != 0) {
+      goto top;
     }
     return emit(tok_newline);
   }
@@ -211,6 +233,10 @@ top:
       depth--;
       return emit(tok_dedent);
     }
+    /**
+     * this is where the tokenizer could be considered done
+     */
+    done = true;
     return emit(tok_eof);
   }
 
@@ -234,12 +260,34 @@ top:
 
 
 
-  if (c == '(') return emit(tok_left_paren, "(");
-  if (c == ')') return emit(tok_right_paren, ")");
-  if (c == '[') return emit(tok_left_square, "[");
-  if (c == ']') return emit(tok_right_square, "]");
-  if (c == '{') return emit(tok_left_curly, "{");
-  if (c == '}') return emit(tok_right_curly, "}");
+  if (c == '(') {
+    group_depth++;
+    return emit(tok_left_paren, "(");
+  }
+  if (c == ')') {
+    group_depth--;
+    return emit(tok_right_paren, ")");
+  }
+
+
+  if (c == '[') {
+    group_depth++;
+    return emit(tok_left_square, "[");
+  }
+  if (c == ']') {
+    group_depth--;
+    return emit(tok_right_square, "]");
+  }
+  if (c == '{') {
+    group_depth++;
+    return emit(tok_left_curly, "{");
+  }
+  if (c == '}') {
+    group_depth--;
+    return emit(tok_right_curly, "}");
+  }
+
+
   if (c == ',') return emit(tok_comma, ",");
 
 
@@ -254,20 +302,14 @@ top:
     while (true) {
       c = next();
       if ((int32_t)c == -1) throw std::logic_error("unterminated string");
-      // also ignore the last double quote for the same reason as above
       if (c == (double_quotes ? '"' : '\'')) break;
       escaped = c == '\\';
       if (escaped) {
         char e = next();
-
         if (e == 'U' || e == 'u') {
-          // parse 32 bit unicode literals
           std::string hex;
-
           int l = 8;
-
           if (e == 'u') l = 4;
-
           for (int i = 0; i < l; i++) {
             hex += next();
           }
@@ -425,7 +467,8 @@ top:
       {"::", tok_is_type}, {"def", tok_def},     {"or", tok_or},
       {"and", tok_and},    {"not", tok_not},     {"do", tok_do},
       {"if", tok_if},      {"then", tok_then},   {"else", tok_else},
-      {"for", tok_for},    {"while", tok_while}, {"return", tok_return}};
+      {"for", tok_for},    {"while", tok_while}, {"return", tok_return},
+      {"class", tok_class}};
   if (special_token_type_map.count(symbol) != 0) {
     type = special_token_type_map[symbol];
   }

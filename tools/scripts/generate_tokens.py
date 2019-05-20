@@ -17,6 +17,7 @@ tokens = [
     "left_paren",
     "right_paren",
 
+    "class",
     "def",
     "newline",
     "indent",

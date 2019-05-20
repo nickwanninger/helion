@@ -32,10 +32,13 @@
 #define CEDAR_HH
 
 #include "helion/text.h"
+#include "helion/parser.h"
 #include "helion/gcconfig.h"
 #include "helion/gc.h"
 #include "helion/tokenizer.h"
 #include "helion/jit.h"
 #include "helion/util.h"
+#include "helion/pstate.h"
+#include "helion/cloud/server.h"
 
 #endif // CEDAR_HH

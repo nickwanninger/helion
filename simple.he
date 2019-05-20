@@ -1,5 +1,6 @@
-do
-	x = 30
-	if true then
-		return false
-puts 'top level'
+# square a value x
+def square x
+	x * x
+end
+
+square square x

@@ -3,6 +3,9 @@
 
 #pragma once
 
+#ifndef __TOKENIZER_H__
+#define __TOKENIZER_H__
+
 #include <helion/text.h>
 #include <memory>
 #include <stdexcept>
@@ -48,23 +51,18 @@ namespace helion {
 #undef TOKEN
     };
     text buf;
-    buf += '(';
     buf += tok_names[tok.type];
-    buf += ", ";
-    buf += '\'';
+    buf += "(\"";
     buf += tok.val;
-    buf += "' <";
+    buf += "\", ";
     buf += std::to_string(tok.line);
-    buf += ",";
-    buf += std::to_string(tok.line);
-    buf += ">)";
+    buf += ", ";
+    buf += std::to_string(tok.col);
+    buf += ")";
     os << buf;
     return os;
   }
 
-
-  // a lexer takes in a unicode string and will allow you to
-  // call .lex() that returns a new token for each token in a stream
   class tokenizer {
    private:
     size_t index = 0;
@@ -75,7 +73,11 @@ namespace helion {
     size_t depth = 0;
     int depth_delta = 0;
     text indent;
+    int group_depth = 0;
+
+
     std::shared_ptr<text> source;
+    std::shared_ptr<std::vector<token>> tokens;
     rune next();
     rune peek();
 
@@ -88,11 +90,21 @@ namespace helion {
 
     void panic(std::string msg);
 
+    /**
+     * lex() pulls the next token out of the source,
+     * adding it to the end of the tokens array
+     */
+    token lex();
+
    public:
+    bool done = false;
     text get_line(long);
     explicit tokenizer(text);
-    token lex();
+
+    token get(size_t);
   };
 
 }  // namespace helion
 
+
+#endif

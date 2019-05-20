@@ -34,7 +34,7 @@ add_definitions(-DUSE_GC=true)
 
 
 # build dependencies before setting up project deets
-# add_subdirectory(dep/libuv)
+add_subdirectory(dep/libuv)
 
 add_subdirectory(include/asmjit)
 
@@ -45,7 +45,7 @@ set(BUILD_SHARED_LIBS OFF)
 option(REPLXX_BuildExamples "Build the examples." OFF)
 set(REPLXX_BuildExamples OFF)
 
-add_subdirectory(dep/replxx)
+# add_subdirectory(dep/replxx)
 
 
 link_directories(/usr/local/lib)
