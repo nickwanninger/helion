@@ -37,10 +37,13 @@ namespace helion {
   class token {
    public:
     std::shared_ptr<text> source;
-    size_t line;
-    size_t col;
+    ssize_t line;
+    ssize_t col;
     int8_t type;
     text val;
+    inline token() {
+      source = nullptr;
+    }
     token(uint8_t, text, std::shared_ptr<text>, size_t line, size_t col);
   };
 

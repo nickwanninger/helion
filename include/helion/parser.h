@@ -9,23 +9,25 @@
 #include <helion/pstate.h>
 #include <functional>
 
+#include <helion/ast.h>
+
 namespace helion {
 
-  class node {
-   public:
-    virtual text str(void) { return "unknown"; }
-  };
+
+
 
   struct presult {
     bool failed = false;
-    std::vector<node*> vals;
+    std::vector<ast::node*> vals;
     pstate state;
 
     inline presult() {}
-    inline presult(node* v, pstate s) : state{s} { vals.push_back(v); }
-    inline presult(node* v) { vals.push_back(v); }
+    inline presult(ast::node* v, pstate s) : state{s} { vals.push_back(v); }
+    inline presult(ast::node* v) { vals.push_back(v); }
 
-    inline operator node*(void) { return vals.size() > 0 ? vals[0] : nullptr; }
+    inline operator ast::node*(void) {
+      return vals.size() > 0 ? vals[0] : nullptr;
+    }
     inline operator pstate(void) { return state; }
     inline operator bool(void) { return !failed; }
 
@@ -68,7 +70,7 @@ namespace helion {
   }
   inline parse_func sequence(std::vector<parse_func> funcs) {
     return [funcs](pstate s) -> presult {
-      std::vector<node*> emitted;
+      std::vector<ast::node*> emitted;
       for (auto& fn : funcs) {
         auto r = fn(s);
         if (r) {
@@ -94,6 +96,15 @@ namespace helion {
   inline parse_func operator&(parse_func l, parse_func r) {
     return sequence({l, r});
   }
+
+
+  /**
+   * parse the top level of a module, which is the finest grain parsing
+   * publically exposed by the ast:: API. All parser functions are implemented
+   * inside `src/helion/parser.cpp` as static functions
+   */
+  ast::module* parse_module(pstate);
+  ast::module* parse_module(text &);
 
 
 

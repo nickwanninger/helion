@@ -1,4 +1,1 @@
-
-def square Int x -> Int
-	return x * x
-end
+3.14159

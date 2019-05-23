@@ -19,7 +19,7 @@ tokens = [
 
     "class",
     "def",
-    "newline",
+    "term",
     "indent",
     "dedent",
     "or",

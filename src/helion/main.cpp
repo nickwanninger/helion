@@ -4,8 +4,10 @@
 #include <gc/gc.h>
 #include <helion.h>
 #include <stdio.h>
+#include <sys/socket.h>
 #include <uv.h>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <type_traits>
 #include <unordered_map>
@@ -14,6 +16,7 @@
 using namespace helion;
 using namespace std::string_literals;
 
+/*
 
 class array_literal : public node {
  public:
@@ -123,13 +126,6 @@ presult parse_string(pstate s) {
 
 
 
-
-/**
- * list grammar is as follows:
- * list -> [ list_body ]
- * list_body -> expr list_tail | _
- * list_tail -> , list_body | _
- */
 // decl
 presult p_array_tail(pstate);
 presult p_array_body(pstate);
@@ -151,18 +147,14 @@ presult parse_array(pstate s) {
 }
 
 
+*/
 
 
-int _main(int argc, char **argv) {
+int main(int argc, char **argv) {
   // print every token from the file
   text src = read_file(argv[1]);
-  tokenizer s(src);
-  for (pstate s = src; s; s++) {
-    puts(s.first());
-  }
-  puts("-------------------------------------");
-  auto res = parse_expr(src);
-  puts("res:", res.str());
+  auto res = parse_module(src);
+  puts(res->str());
   return 0;
 }
 /**
@@ -186,215 +178,232 @@ int _main(int argc, char **argv) {
  */
 
 
+struct storage_cell {
+  size_t ind = 0;
+  size_t size = 0;
+  char *buf = nullptr;
+};
 
-class connection;
+std::vector<storage_cell> cells;
 
-template <typename C>
-class tcp_server {
- private:
-  struct sockaddr_in addr;
-  // a handle to the TCP server inside libuv
-  uv_tcp_t sv;
-  uv_loop_t *loop = nullptr;
-  static void alloc_buffer(uv_handle_t *handle, size_t suggested_size,
-                           uv_buf_t *buf) {
-    buf->base = (char *)malloc(suggested_size);
-    buf->len = suggested_size;
-  }
 
-  void on_connection(uv_stream_t *server, int status) {
-    if (status < 0) {
-      fprintf(stderr, "New connection error %s\n", uv_strerror(status));
-      return;
-    }
 
-    auto client = new uv_tcp_t();
-    auto conn = new C();
-    client->data = (void *)conn;
-    conn->_connected(client);
-    uv_tcp_init(loop, client);
-    if (uv_accept(server, (uv_stream_t *)client) == 0) {
-      uv_read_start((uv_stream_t *)client, alloc_buffer, C::translate_read);
+class storage_conn : public connection {
+ public:
+  inline void on_connect() { printf("new connection\n"); }
+  inline void on_disconnect() { printf("disconnect\n"); }
+  inline void on_recv(int len, const char *buf) {
+    if (len > 0) {
+      char cmd = buf[0];
+      if (cmd == 'a') {
+        size_t size = *(size_t *)(buf + 1);
+
+        size_t ind = cells.size();
+
+        storage_cell sc;
+        sc.size = size;
+        sc.ind = ind;
+        sc.buf = new char[size];
+        cells.push_back(sc);
+
+        send(sizeof(size_t), (const char *)&ind);
+        return;
+      }
+
+
+      if (cmd == 'r') {
+        size_t *args = (size_t *)(buf + 1);
+
+        auto addr = args[0];
+        auto size = args[1];
+
+
+        if (addr >= 0 && addr < cells.size()) {
+          auto &sc = cells[addr];
+
+          if (sc.size >= size) {
+            send(size, (const char *)sc.buf);
+            return;
+          }
+        }
+        send("");
+        return;
+      }
+
+
+      if (cmd == 'w') {
+        size_t *args = (size_t *)(buf + 1);
+
+        auto addr = args[0];
+        auto size = args[1];
+
+        char *data = (char *)&args[2];
+
+        if (addr >= 0 && addr < cells.size()) {
+          auto &sc = cells[addr];
+
+          if (sc.size >= size) {
+            memcpy(sc.buf, data, size);
+            send("1");
+            return;
+          }
+        }
+        send("0");
+      }
     } else {
-      uv_close((uv_handle_t *)client, NULL);
+      send("");
+    }
+  }
+};
+
+
+
+
+struct remote_storage_connection {
+  int sock = -1;
+  std::mutex lock;
+
+
+  inline remote_storage_connection(const char *addr = "127.0.0.1",
+                                   short port = 7000) {
+    struct sockaddr_in serv_addr;
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+      printf("socket creation error \n");
+      exit(-1);
+    }
+    memset(&serv_addr, '0', sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port);
+    // Convert IPv4 and IPv6 addresses from text to binary form
+    if (inet_pton(AF_INET, addr, &serv_addr.sin_addr) <= 0) {
+      exit(-1);
+    }
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+      exit(-1);
     }
   }
 
-  static void translate_on_connection(uv_stream_t *server, int status) {
-    auto *self = (tcp_server *)server->data;
-    self->on_connection(server, status);
+  /**
+   * allocate a block of memory
+   */
+  inline size_t alloc(size_t sz) {
+    std::unique_lock lk(lock);
+    size_t addr = 0;
+    int blen = sizeof(char) + sizeof(size_t);
+    char buf[blen];
+    buf[0] = 'a';
+    *(size_t *)(buf + 1) = sz;
+    ::send(sock, buf, blen, 0);
+    ::read(sock, &addr, sizeof(size_t));
+    return addr;
   }
 
+  inline int read(size_t addr, size_t size, char *dst) {
+    std::unique_lock lk(lock);
+
+    int blen = sizeof(char) + sizeof(size_t[2]);
+    char buf[blen];
+    buf[0] = 'r';
+    size_t *nums = (size_t *)(buf + 1);
+    nums[0] = addr;
+    nums[1] = size;
+    ::send(sock, buf, blen, 0);
+    return ::read(sock, dst, size);
+  }
+
+  inline int write(size_t addr, int size, char *data) {
+    std::unique_lock lk(lock);
+
+    int cmdlen = sizeof(char) + sizeof(size_t) + sizeof(size_t) + size;
+    char *cmd = new char[cmdlen];
+    cmd[0] = 'w';
+    size_t *args = (size_t *)(cmd + 1);
+    args[0] = addr;
+    args[1] = size;
+    void *dst = &args[2];
+    memcpy(dst, data, size);
+    ::send(sock, cmd, cmdlen, 0);
+    ::read(sock, dst, 1);
+    delete[] cmd;
+    return 0;
+  }
+};
+
+
+
+/**
+ * primary remote storage connection
+ */
+remote_storage_connection *rsc;
+
+template <typename T>
+class remote_ref {
  public:
-  tcp_server(uv_loop_t *lp, std::string ip = "0.0.0.0", int port = 7000) {
-    static_assert(std::is_base_of<connection, C>::value,
-                  "C must be a descendant of MyBase");
-    loop = lp;
-    // initialize the server on the loop lp
-    uv_tcp_init(loop, &sv);
-    sv.data = this;
-    // initialize the address...
-    uv_ip4_addr(ip.c_str(), port, &addr);
-    // bind the address so the server can listen on it
-    uv_tcp_bind(&sv, (const struct sockaddr *)&addr, 0);
-    int r =
-        uv_listen((uv_stream_t *)&sv, 128, tcp_server::translate_on_connection);
-    if (r) {
-      std::string err = "tcp_server listen error: "s + uv_strerror(r);
-      throw std::runtime_error(err.c_str());
-    }
+  size_t ind = -1;
+
+  operator T() {
+    T v;
+    rsc->read(ind, sizeof(T), (char *)&v);
+    return v;
+  }
+
+  T operator+(T &o) {
+    T self = *this;
+    return self + o;
+  }
+
+  remote_ref &operator=(const T &value) {
+    // write the changes over the network
+    rsc->write(ind, sizeof(T), (char *)&value);
+    return *this;
   }
 };
 
-
-
-class connection {
-  uv_tcp_t *client = nullptr;
-
-  static void translate_write_res(uv_write_t *req, int status) {
-    connection *c = (connection *)req->data;
-    c->on_write(req, status);
-    free(req);
-  }
-
- public:
-  static void translate_read(uv_stream_t *client, ssize_t nread,
-                             const uv_buf_t *buf) {
-    auto *conn = static_cast<connection *>(client->data);
-    if (nread < 0) {
-      if (nread != UV_EOF) {
-        // fprintf(stderr, "Client Lost %s\n", uv_err_name(nread));
-        delete conn;
-      }
-    } else if (nread > 0) {
-      conn->on_recv(nread, buf->base);
-    }
-  }
-
-  inline connection() {}
-
-  inline virtual ~connection(void) {
-    if (client != nullptr) {
-      printf("connection closed\n");
-      uv_close((uv_handle_t *)client, NULL);
-    }
-  }
-
-
-  inline void _connected(uv_tcp_t *c) {
-    client = c;
-    on_connect();
-  }
-
-  inline virtual void on_connect() {}
-
-  inline void send(int nbytes, const char *buf) {
-    uv_write_t *req = (uv_write_t *)malloc(sizeof(uv_write_t));
-    req->data = (void *)this;
-    printf("writing %d bytes: ", nbytes);
-
-    for (int i = 0; i < nbytes; i++) {
-      printf("%c", buf[i]);
-    }
-    printf("\n");
-    uv_buf_t wrbuf = uv_buf_init(const_cast<char *>(buf), nbytes);
-    uv_write(req, (uv_stream_t *)client, &wrbuf, 1,
-             connection::translate_write_res);
-  }
-
-  inline void on_write(uv_write_t *req, int status) {
-    if (status) {
-      fprintf(stderr, "Write error %s\n", uv_strerror(status));
-    }
-  }
-
-  virtual inline void on_recv(int nread, const char *data) {
-    // printf("read %d bytes\n", nread);
-  }
-};
-
-
-
-class echo_conn : public connection {
- public:
-  inline void on_recv(int n, const char *data) { send(n, data); }
-  inline ~echo_conn() {}
-};
-
-
-
-class len_conn : public connection {
- public:
-  inline void on_recv(int n, const char *data) {
-    int sz = ceil(log10(n)) + 2;
-    char *buf = new char[sz];
-    sprintf(buf, "%d\n", n);
-    send(sz, buf);
-  }
-  inline ~len_conn() {}
-};
-
-
-struct connect_data {
-  connection *conn;
-  uv_tcp_t *sock;
-};
-
-void on_connect(uv_connect_t *connection, int status) {
-  auto *data = (connect_data *)connection->data;
-
-
-  auto *conn = data->conn;
-  auto *sock = data->sock;
-
-  conn->_connected(sock);
-
-  delete data;
+template <typename T>
+remote_ref<T> remote_alloc(void) {
+  remote_ref<T> r;
+  r.ind = rsc->alloc(sizeof(T));
+  return r;
 }
 
 
-template <typename C>
-connection *connect(uv_loop_t *loop, std::string ip4, int port) {
-  struct sockaddr_in addr;
-  uv_ip4_addr(const_cast<char *>(ip4.c_str()), port, &addr);
+int client_main() {
+  rsc = new remote_storage_connection();
 
-  uv_tcp_t *socket = new uv_tcp_t();
-  uv_tcp_init(loop, socket);
-  uv_tcp_keepalive(socket, 1, 60);
 
-  uv_connect_t *connect = new uv_connect_t();
+  auto r = remote_alloc<int>();
+  r = 0;
 
-  auto data = new connect_data();
-  data->conn = new C();
-  data->sock = socket;
+  while (true) {
+    int i = r;
+    i++;
+    printf("%d\n", i);
+    r = i;
+  }
 
-  connect->data = (void *)data;
-  uv_tcp_connect(connect, socket, (const struct sockaddr *)&addr, on_connect);
-  return data->conn;
+  return 0;
 }
 
-
-
-
-class spammer : public connection {
-
-  public:
-    inline void on_connect() {
-      while (true) {
-        char *buf = "hello\n";
-        send(sizeof(buf), buf-1);
-      }
-    }
-};
 
 
 uv_loop_t *loop;
+tcp_server<storage_conn> *server;
 
-int main(int argc, char **argv) {
-  loop = uv_default_loop();
 
-  auto *c = connect<spammer>(loop, "127.0.0.1", 7000);
-  // auto *server = new tcp_server<len_conn>(loop, "127.0.0.1", 7000);
-  // printf("server addr: %p\n", server);
-  return uv_run(loop, UV_RUN_DEFAULT);
+int _main(int argc, char **argv) {
+  if (argc == 2) {
+    loop = uv_default_loop();
+
+
+    if (!strcmp(argv[1], "client")) {
+      return client_main();
+    }
+    if (!strcmp(argv[1], "server")) {
+      server = new tcp_server<storage_conn>(loop, "0.0.0.0", 7000);
+    }
+
+
+    return uv_run(loop, UV_RUN_DEFAULT);
+  }
+  return 0;
 }

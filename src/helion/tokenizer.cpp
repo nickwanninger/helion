@@ -208,14 +208,18 @@ top:
   // std::cout << "LINE:" << get_line(index) << std::endl;
 
 
-  if (c == '\n') {
-    while (peek() == '\n') {
+
+  // newlines and semicolons are considered 'terminator' characters.
+  // they signify the end of a line or other construct
+  if (c == '\n' || c == ';') {
+    while (peek() == '\n' || peek() == ';') {
       c = next();
     }
-    if (group_depth != 0) {
-      goto top;
-    }
-    return emit(tok_newline);
+    /*  if (group_depth != 0) {
+     *    goto top;
+     *  }
+     */
+    return emit(tok_term);
   }
 
   if (c == '#') {

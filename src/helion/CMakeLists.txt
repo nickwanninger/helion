@@ -11,8 +11,11 @@ set_property(TARGET gc_static PROPERTY IMPORTED_LOCATION
 
 add_executable(helion
 	src/helion/text.cpp
+	src/helion/ast.cpp
 	src/helion/tokenizer.cpp
+	src/helion/net.cpp
 	src/helion/gc.cpp
+	src/helion/parser.cpp
 	src/helion/main.cpp
 )
 
