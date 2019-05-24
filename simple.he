@@ -1,4 +1,1 @@
-# square a value x
-def square x
-	x * x
-end
+1 + 2 * 2 / 8

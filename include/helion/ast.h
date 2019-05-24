@@ -123,6 +123,14 @@ namespace helion {
     };
 
 
+    class binary_op : public node {
+      public:
+        node *left;
+        node *right;
+        text op;
+        NODE_FOOTER;
+    };
+
 
   }  // namespace ast
 

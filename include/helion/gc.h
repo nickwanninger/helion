@@ -68,15 +68,18 @@ namespace helion {
         if (ptr > (char *)this + size) return 1;
         return 0;
       }
+
       /**
        * returns the first usable byte in the heap
        */
       void *mem_heap_lo();
+
       /**
        * return the byte immediately after the last byte in the heap.
        * being greater than this means you are above this heap.
        */
       void *mem_heap_hi();
+
       free_header *find_fit(size_t);
     };
 
