@@ -85,7 +85,7 @@ namespace helion {
     }
 
     ~tcp_server(void) {
-      uv_close(sv, NULL);
+      uv_close((uv_handle_t*)sv, NULL);
     }
   };
 

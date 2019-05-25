@@ -565,6 +565,7 @@ void GC_init_linux_data_start(void) {
     return;
   }
   */
+}
 
   // GC_data_start = (ptr_t)GC_find_limit(data_end, false);
 #endif /* SEARCH_FOR_DATA_START */

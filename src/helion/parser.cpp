@@ -58,11 +58,11 @@ ast::module *helion::parse_module(pstate s) {
         module->stmts.push_back(v);
       }
 
-      bool found = false;
+      // bool found = false;
       while (true) {
         if (token end = s; end.type == tok_term) {
           s++;
-          found = true;
+          // found = true;
         } else
           break;
       }

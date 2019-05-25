@@ -52,7 +52,7 @@ tokenizer::tokenizer(text src, text pa) {
 
 
 token tokenizer::get(size_t i) {
-  if (i < 0) {
+  if ((int)i < 0) {
     return token(tok_eof, "", nullptr, 0, 0);
   }
 

@@ -207,16 +207,16 @@ class storage_conn : public connection {
 
 
       if (cmd == 'r') {
-        size_t *args = (size_t *)(buf + 1);
+        ssize_t *args = (ssize_t *)(buf + 1);
 
         auto addr = args[0];
         auto size = args[1];
 
 
-        if (addr >= 0 && addr < cells.size()) {
+        if (addr >= 0 && (size_t)addr < cells.size()) {
           auto &sc = cells[addr];
 
-          if (sc.size >= size) {
+          if (sc.size >= (size_t)size) {
             send(size, (const char *)sc.buf);
             return;
           }
@@ -227,17 +227,17 @@ class storage_conn : public connection {
 
 
       if (cmd == 'w') {
-        size_t *args = (size_t *)(buf + 1);
+        ssize_t *args = (ssize_t *)(buf + 1);
 
         auto addr = args[0];
         auto size = args[1];
 
         char *data = (char *)&args[2];
 
-        if (addr >= 0 && addr < cells.size()) {
+        if (addr >= 0 && (size_t)addr < cells.size()) {
           auto &sc = cells[addr];
 
-          if (sc.size >= size) {
+          if (sc.size >= (size_t)size) {
             memcpy(sc.buf, data, size);
             send("1");
             return;

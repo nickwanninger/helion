@@ -28,7 +28,7 @@ footer = """
 
 
 target_include_directories(helion PRIVATE ${LLVM_INCLUDE_DIRS})
-target_link_libraries(helion uv_a replxx ${CMAKE_DL_LIBS} ${LLVM_LIBS} -pthread -lboost_system)
+target_link_libraries(helion uv_a ${CMAKE_DL_LIBS} ${LLVM_LIBS} -pthread -lboost_system)
 
 set_target_properties(helion PROPERTIES OUTPUT_NAME helion)
 
