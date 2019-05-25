@@ -7,87 +7,165 @@
 #define __HELION_JIT__
 
 
-/**
- * for now, helion only works on x86_64, so the JIT should check this
- */
-#ifndef __x86_64__
-#error "Helion does not support your architecture. Requires x86_64"
-#endif
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Mangler.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Scalar/GVN.h"
 
-#include <asmjit/src/asmjit/asmjit.h>
+#include "llvm/Support/DynamicLibrary.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetMachine.h"
+
+#include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ExecutionEngine/JITSymbol.h"
+#include "llvm/ExecutionEngine/Orc/CompileUtils.h"
+#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
+#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
+#include "llvm/ExecutionEngine/SectionMemoryManager.h"
 
 #include <vector>  // for std::vector
 
+
 namespace helion {
 
-  /**
-   * the jit namespace holds all the jit compiler related functions,
-   * classes, and sructs.
+  using namespace llvm;
+  using namespace llvm::orc;
+  /*
+   * the helion::jit class acts as an application specific wrapper
+   * around LLVM's internal ideas and whatnot. It allows adding, removing,
+   * and accessing modules. Looking up symbols, and adding symbols, and
+   * has the entrypoint functions to compile an AST
    */
-  namespace jit {
-
-    /**
-     * code handles are what hold code so the GC can clear them
-     * up and free the executable pages when they are no longer
-     * needed.
-     */
-    class code_handle {
-      // TODO(stub)
-    };
-
-    class compiler {
-      // TODO(stub)
-    };
+  class jit {
+   public:
+    using ObjLayerT = LegacyRTDyldObjectLinkingLayer;
+    using CompileLayerT = LegacyIRCompileLayer<ObjLayerT, SimpleCompiler>;
 
 
+    jit()
+        : symbol_resolver(createLegacyLookupResolver(
+              session,
+              [this](const std::string &Name) {
+                return obj_layer.findSymbol(Name, true);
+              },
+              [](Error Err) {
+                cantFail(std::move(Err), "lookupFlags failed");
+              })),
+          target_machine(EngineBuilder().selectTarget()),
+          data_layout(target_machine->createDataLayout()),
+          obj_layer(session,
+                    [this](VModuleKey) {
+                      return ObjLayerT::Resources{
+                          std::make_shared<SectionMemoryManager>(),
+                          symbol_resolver};
+                    }),
+          compile_layer(obj_layer, SimpleCompiler(*target_machine)) {
+      llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
+    }
 
 
-    /**
-     * func_sig allows the compiler to generate function signatures
-     * dynamically for the JIT instead of relying on asmjit's
-     * FuncSignatureN<..> type for everything.
-     *
-     * This type is very short-lived, and exists only to build a sig
-     * dynamically.
-     */
-    class func_sig {
-      // return type starts out as void
-      uint8_t ret = asmjit::TypeIdOf<void>::kTypeId;
-      // arguments to the function, these are only ever added to.
-      std::vector<uint8_t> args;
+    inline TargetMachine &get_target_machine() { return *target_machine; }
 
-     public:
-      /**
-       * add an argument from the template parameter V
-       */
-      template <typename V>
-      inline void add_arg() {
-        args.push_back(asmjit::TypeIdOf<V>::kTypeId);
+    inline VModuleKey add_module(std::unique_ptr<Module> m) {
+      auto K = session.allocateVModule();
+      cantFail(compile_layer.addModule(K, std::move(m)));
+      module_keys.push_back(K);
+      return K;
+    }
+
+
+  void removeModule(VModuleKey key) {
+    module_keys.erase(find(module_keys, key));
+    cantFail(compile_layer.removeModule(key));
+  }
+
+  JITSymbol findSymbol(const std::string Name) {
+    return findMangledSymbol(mangle(Name));
+  }
+
+
+
+   private:
+    // mangle a string
+    std::string mangle(const std::string &name) {
+      std::string mangled_name;
+      {
+        auto mangled_name_stream = raw_string_ostream(mangled_name);
+        Mangler::getNameWithPrefix(mangled_name_stream, name, data_layout);
       }
+      return mangled_name;
+    }
 
-      /**
-       * set the return type via a template function call. It will
-       * grab the type from the template argument and use that
-       * to determine the internal type to set the return to.
-       */
-      template <typename R>
-      inline void set_ret() {
-        ret = asmjit::TypeIdOf<R>::kTypeId;
-      }
 
-      /**
-       * finalize the function signature after building
-       * it up by setting the return and the args previously
-       */
-      inline asmjit::FuncSignature finalize() {
-        uint32_t ccId = asmjit::CallConv::kIdHost;
-        asmjit::FuncSignature f;
-        f.init(ccId, ret, args.data(), args.size());
-        return f;
-      }
-    };
 
-  }  // namespace jit
+
+    JITSymbol findMangledSymbol(const std::string &Name) {
+#ifdef _WIN32
+      // The symbol lookup of ObjectLinkingLayer uses the SymbolRef::SF_Exported
+      // flag to decide whether a symbol will be visible or not, when we call
+      // IRCompileLayer::findSymbolIn with ExportedSymbolsOnly set to true.
+      //
+      // But for Windows COFF objects, this flag is currently never set.
+      // For a potential solution see: https://reviews.llvm.org/rL258665
+      // For now, we allow non-exported symbols on Windows as a workaround.
+      const bool ExportedSymbolsOnly = false;
+#else
+      const bool ExportedSymbolsOnly = true;
+#endif
+
+      // Search modules in reverse order: from last added to first added.
+      // This is the opposite of the usual search order for dlsym, but makes
+      // more sense in a REPL where we want to bind to the newest available
+      // definition.
+      for (auto H : make_range(module_keys.rbegin(), module_keys.rend()))
+        if (auto Sym = compile_layer.findSymbolIn(H, Name, ExportedSymbolsOnly))
+          return Sym;
+
+      // If we can't find the symbol in the JIT, try looking in the host
+      // process.
+      if (auto SymAddr = RTDyldMemoryManager::getSymbolAddressInProcess(Name))
+        return JITSymbol(SymAddr, JITSymbolFlags::Exported);
+
+#ifdef _WIN32
+      // For Windows retry without "_" at beginning, as RTDyldMemoryManager uses
+      // GetProcAddress and standard libraries like msvcrt.dll use names
+      // with and without "_" (for example "_itoa" but "sin").
+      if (Name.length() > 2 && Name[0] == '_')
+        if (auto SymAddr =
+                RTDyldMemoryManager::getSymbolAddressInProcess(Name.substr(1)))
+          return JITSymbol(SymAddr, JITSymbolFlags::Exported);
+#endif
+
+      return nullptr;
+    }
+
+
+
+
+    ExecutionSession session;
+    std::shared_ptr<SymbolResolver> symbol_resolver;
+    std::unique_ptr<TargetMachine> target_machine;
+    DataLayout data_layout;
+    ObjLayerT obj_layer;
+    CompileLayerT compile_layer;
+    std::vector<VModuleKey> module_keys;
+  };
 
 }  // namespace helion
 

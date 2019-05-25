@@ -51,6 +51,7 @@ tokens = [
     "dot",
     "comma",
     "comment",
+    "end",
 ]
 
 

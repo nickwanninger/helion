@@ -41,9 +41,7 @@ namespace helion {
     ssize_t col;
     int8_t type;
     text val;
-    inline token() {
-      source = nullptr;
-    }
+    inline token() { source = nullptr; }
     token(uint8_t, text, std::shared_ptr<text>, size_t line, size_t col);
   };
 
@@ -74,11 +72,12 @@ namespace helion {
 
     // depth is the indent depth of the current line
     size_t depth = 0;
-    int depth_delta = 0;
+    // int depth_delta = 0;
     text indent;
     int group_depth = 0;
 
 
+    text path;
     std::shared_ptr<text> source;
     std::shared_ptr<std::vector<token>> tokens;
     rune next();
@@ -102,7 +101,9 @@ namespace helion {
    public:
     bool done = false;
     text get_line(long);
-    explicit tokenizer(text);
+    inline text get_path(void) { return path; }
+
+    explicit tokenizer(text, text);
 
     token get(size_t);
   };

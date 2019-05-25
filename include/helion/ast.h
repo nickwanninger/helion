@@ -124,13 +124,61 @@ namespace helion {
 
 
     class binary_op : public node {
-      public:
-        node *left;
-        node *right;
-        text op;
-        NODE_FOOTER;
+     public:
+      node *left;
+      node *right;
+      text op;
+      NODE_FOOTER;
     };
 
+
+    class dot : public node {
+     public:
+      node *expr;
+      text sub;
+      NODE_FOOTER;
+    };
+
+    class subscript : public node {
+     public:
+      node *expr;
+      std::vector<node *> subs;
+      NODE_FOOTER;
+    };
+
+    class var : public node {
+     public:
+      text value;
+      NODE_FOOTER;
+    };
+
+    class call : public node {
+     public:
+      node *func;
+      std::vector<node *> args;
+      NODE_FOOTER;
+    };
+
+    class tuple : public node {
+     public:
+      std::vector<node *> vals;
+      NODE_FOOTER;
+    };
+
+
+    class string : public node {
+     public:
+      text val;
+      NODE_FOOTER;
+    };
+
+
+
+    class do_block : public node {
+      public:
+        std::vector<node *> exprs;
+        NODE_FOOTER;
+    };
 
   }  // namespace ast
 

@@ -24,6 +24,7 @@
 
 #include <helion/text.h>
 #include <helion/tokenizer.h>
+#include <helion/util.h>
 #include <cctype>
 #include <iostream>
 #include <map>
@@ -41,7 +42,8 @@ token::token(uint8_t t, text v, std::shared_ptr<text> src, size_t l, size_t c) {
   col = c;
 }
 
-tokenizer::tokenizer(text src) {
+tokenizer::tokenizer(text src, text pa) {
+  path = pa;
   source = std::make_shared<text>(src);
   tokens = std::make_shared<std::vector<token>>();
   index = 0;
@@ -346,6 +348,7 @@ top:
     // bool has_decimal = c == '.';
 
 
+    /*
     if (peek() == 'x') {
       next();
       text hex = accept_run("0123456789abcdefABCDEF");
@@ -358,16 +361,6 @@ top:
     }
 
 
-    if (peek() == 'o') {
-      next();
-      text hex = accept_run("012345567");
-      unsigned long long x;
-      std::stringstream ss;
-      ss << std::oct << hex;
-      ss >> x;
-      auto s = std::to_string(x);
-      return emit(tok_num, s);
-    }
 
 
     if (peek() == 'b') {
@@ -381,6 +374,7 @@ top:
       auto s = std::to_string(x);
       return emit(tok_num, s);
     }
+    */
 
 
     while (isdigit(peek()) || peek() == '.') {
@@ -390,6 +384,8 @@ top:
 
     if (!(buf == ".")) {
       return emit(tok_num, buf);
+    } else {
+      return emit(tok_dot);
     }
   }  // digit parsing
 
@@ -406,7 +402,8 @@ top:
       {">", tok_gt},     {">=", tok_gte},   {"<", tok_lt},
       {"<=", tok_lte},   {"+", tok_add},    {"-", tok_sub},
       {"*", tok_mul},    {"/", tok_div},    {".", tok_dot},
-      {"->", tok_arrow}, {"|", tok_pipe},   {",", tok_comma}};
+      {"->", tok_arrow}, {"|", tok_pipe},   {",", tok_comma},
+      {"%", tok_mod}};
 
   if (in_charset(c, operators)) {
     std::string op;
@@ -433,7 +430,7 @@ top:
   text symbol;
   symbol += c;
 
-  while (!in_charset(peek(), " \n\t(){}[],") &&
+  while (!in_charset(peek(), " ;\n\t(){}[],") &&
          !in_charset(peek(), operators)) {
     auto v = next();
     if ((int32_t)v == -1 || v == 0) break;
@@ -472,7 +469,7 @@ top:
       {"and", tok_and},    {"not", tok_not},     {"do", tok_do},
       {"if", tok_if},      {"then", tok_then},   {"else", tok_else},
       {"for", tok_for},    {"while", tok_while}, {"return", tok_return},
-      {"class", tok_class}};
+      {"class", tok_class}, {"end", tok_end}};
   if (special_token_type_map.count(symbol) != 0) {
     type = special_token_type_map[symbol];
   }

@@ -13,151 +13,146 @@
 #include <unordered_map>
 #include <vector>
 
+
+
 using namespace helion;
 using namespace std::string_literals;
 
-/*
+using namespace llvm;
+using namespace llvm::orc;
 
-class array_literal : public node {
- public:
-  std::vector<node *> vals;
 
-  inline text str(void) {
-    text t;
-    t += "[";
-    for (size_t i = 0; i < vals.size(); i++) {
-      auto &v = vals[i];
-      if (v != nullptr) {
-        t += v->str();
-      } else {
-        t += "UNKNOWN!";
-      }
-      if (i < vals.size() - 1) t += ", ";
-    }
-    t += "]";
-    return t;
-  }
-};
-
-class number_literal : public node {
- public:
-  text num;
-  inline text str(void) { return num; }
-};
-
-class var_literal : public node {
- public:
-  text var;
-  inline text str(void) { return var; }
-};
+static LLVMContext ctx;
+static IRBuilder<> builder(ctx);
+static std::unique_ptr<Module> mod;
+static std::unique_ptr<legacy::FunctionPassManager> fpm;
+static std::unique_ptr<helion::jit> jitses;
 
 
 
-class string_literal : public node {
- public:
-  text val;
-  inline text str(void) {
-    text s;
-    s += "'";
-    s += val;
-    s += "'";
-    return s;
-  }
-};
 
-presult parse_num(pstate);
-presult parse_var(pstate);
-presult parse_string(pstate);
-presult parse_array(pstate);
-
-auto parse_expr = options({parse_num, parse_var, parse_string, parse_array});
-
-parse_func accept(enum tok_type t) {
-  return [t](pstate s) -> presult {
-    if (s.first().type == t) {
-      presult p;
-      p.state = s.next();
-      return p;
-    }
-    return pfail();
-  };
+static void init_module_and_pass_manager() {
+  // Open a new module.
+  mod = llvm::make_unique<Module>("my cool jit", ctx);
+  mod->setDataLayout(jitses->get_target_machine().createDataLayout());
+  // Create a new pass manager attached to it.
+  fpm = llvm::make_unique<legacy::FunctionPassManager>(mod.get());
+  // Do simple "peephole" optimizations and bit-twiddling optzns.
+  fpm->add(createInstructionCombiningPass());
+  // Reassociate expressions.
+  fpm->add(createReassociatePass());
+  // Eliminate Common SubExpressions.
+  fpm->add(createGVNPass());
+  // Simplify the control flow graph (deleting unreachable blocks, etc).
+  fpm->add(createCFGSimplificationPass());
+  fpm->doInitialization();
 }
 
-auto epsilon = [](pstate s) {
-  presult r;
-  r.state = s;
-  return r;
-};
-
-
-presult parse_num(pstate s) {
-  token t = s;
-  if (t.type == tok_num) {
-    auto *n = new number_literal();
-    n->num = t.val;
-    return presult(n, s.next());
-  } else {
-    return pfail();
-  }
-}
-
-presult parse_var(pstate s) {
-  token t = s;
-  if (t.type == tok_var) {
-    auto *n = new var_literal();
-    n->var = t.val;
-    return presult(n, s.next());
-  } else {
-    return pfail();
-  }
-}
-
-
-presult parse_string(pstate s) {
-  token t = s;
-  if (t.type == tok_str) {
-    auto *n = new string_literal();
-    n->val = t.val;
-    return presult(n, s.next());
-  } else {
-    return pfail();
-  }
-}
-
-
-
-// decl
-presult p_array_tail(pstate);
-presult p_array_body(pstate);
-// impl
-presult p_array_body(pstate s) {
-  return ((parse_expr & p_array_tail) | (parse_func)epsilon)(s);
-}
-presult p_array_tail(pstate s) {
-  return ((accept(tok_comma) & p_array_body) | (parse_func)epsilon)(s);
-}
-
-presult parse_array(pstate s) {
-  auto p_list =
-      accept(tok_left_square) & p_array_body & accept(tok_right_square);
-  auto res = p_list(s);
-  array_literal *ln = new array_literal();
-  ln->vals = res.vals;
-  return presult(ln, res.state);
-}
-
-
-*/
 
 
 int main(int argc, char **argv) {
+
+  InitializeNativeTarget();
+  InitializeNativeTargetAsmPrinter();
+  InitializeNativeTargetAsmParser();
+  jitses = std::make_unique<helion::jit>();
+
+
+  init_module_and_pass_manager();
+
+  std::vector<Type *> ftype(2, Type::getDoubleTy(ctx));
+  FunctionType *FT = FunctionType::get(Type::getDoubleTy(ctx), ftype, false);
+
+  std::string name = "hello";
+
+
+  llvm::Twine s = "add_doubles";
+  auto *func = Function::Create(FT, Function::ExternalLinkage, 0, s, mod.get());
+
+
+  std::vector<Value *> args;
+
+  // Set names for all arguments.
+  unsigned i = 0;
+  for (auto &arg : func->args()) {
+    std::string name = "arg";
+    name += std::to_string(i++);
+    arg.setName(name);
+    args.push_back(&arg);
+  }
+
+
+  BasicBlock *BB = BasicBlock::Create(ctx, "entry", func);
+  builder.SetInsertPoint(BB);
+
+  Value *res = builder.CreateFAdd(args[0], args[1]);
+  builder.CreateRet(res);
+
+  verifyFunction(*func);
+
+  // run the optimization on the function
+  fpm->run(*func);
+
+  // JIT the module containing the anonymous expression, keeping a handle so
+  // we can free it later.
+  auto H = jitses->add_module(std::move(mod));
+
+  // Search the JIT for the __anon_expr symbol.
+  auto ExprSymbol = jitses->findSymbol("add_doubles");
+  assert(ExprSymbol && "Function not found");
+
+  // Get the symbol's address and cast it to the right type (takes no
+  // arguments, returns a double) so we can call it as a native function.
+  auto fptr = (double (*)(double, double))(intptr_t)cantFail(ExprSymbol.getAddress());
+
+  printf("%f\n", fptr(3, 4));
+
+  // Delete the anonymous expression module from the JIT.
+  jitses->removeModule(H);
+
+
+
+  /*
   // print every token from the file
   text src = read_file(argv[1]);
-  auto res = parse_module(src);
-  puts(res->str());
+
+  try {
+    auto res = parse_module(src, argv[1]);
+    puts(res->str());
+  } catch (std::exception &e) {
+    puts(e.what());
+  }
+  */
   return 0;
 }
+
+
+
+
 /**
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
  *
  *
  *

@@ -6,8 +6,8 @@
 #ifndef __PSTATE_H__
 #define __PSTATE_H__
 
-#include <helion/util.h>
 #include <helion/tokenizer.h>
+#include <helion/util.h>
 
 namespace helion {
 
@@ -16,6 +16,7 @@ namespace helion {
     std::shared_ptr<tokenizer> tokn;
 
    public:
+
     inline pstate() {
       ind = 0;
       tokn = nullptr;
@@ -25,9 +26,17 @@ namespace helion {
       tokn = t;
     }
 
-    inline pstate(text src, int i = 0) {
+    inline pstate(text src, text p, int i = 0) {
       ind = i;
-      tokn = std::make_shared<tokenizer>(src);
+      tokn = std::make_shared<tokenizer>(src, p);
+    }
+
+    inline text line(long ln) {
+      return tokn->get_line(ln);
+    }
+
+    inline text path(void) {
+      return tokn->get_path();
     }
 
     inline token first(void) {

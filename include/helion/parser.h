@@ -104,9 +104,49 @@ namespace helion {
    * inside `src/helion/parser.cpp` as static functions
    */
   ast::module* parse_module(pstate);
-  ast::module* parse_module(text &);
+  ast::module* parse_module(text, text);
 
 
+
+  class syntax_error : public std::exception {
+    std::string _msg;
+
+   public:
+
+    long line;
+    long col;
+
+    inline syntax_error(pstate s, text msg) {
+      token tok = s;
+      _msg += s.path();
+      _msg += " (";
+      _msg += std::to_string(tok.line+1);
+      _msg += ":";
+      _msg += std::to_string(tok.col+1);
+      _msg += ") ";
+      _msg += "error: ";
+      _msg += msg; 
+      _msg += "\n";
+
+
+      text indent = "  | ";
+
+      _msg += indent;
+      _msg += s.line(tok.line);
+      _msg += "\n";
+
+      _msg += indent;
+      for (int i = 0; i < tok.col-1; i++) {
+        _msg += " ";
+      }
+      _msg += "^ here\n\n";
+
+    }
+    inline const char* what() const throw() {
+      // simply pull the value out of the msg
+      return _msg.c_str();
+    }
+  };
 
 
 }  // namespace helion

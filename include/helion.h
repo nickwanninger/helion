@@ -33,6 +33,7 @@
 
 #include "helion/net.h"
 #include "helion/text.h"
+#include "helion/types.h"
 #include "helion/parser.h"
 #include "helion/gcconfig.h"
 #include "helion/gc.h"

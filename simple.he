@@ -1,1 +1,3 @@
-1 + 2 * 2 / 8
+square = (Float n) Float -> do
+	return n * n
+end

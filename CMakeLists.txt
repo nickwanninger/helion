@@ -18,9 +18,9 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DBUILD_MODE=Release")
 set(CMAKE_C_FLAGS_RELEASE   "-O3 -DBUILD_MODE=Release")
 
 
-set(ASMJIT_STATIC TRUE)
 
-set(ASMJIT_RELEASE TRUE)
+# set(ASMJIT_STATIC TRUE)
+# set(ASMJIT_RELEASE TRUE)
 
 add_definitions(-DPOINTER_MASK=0x0007FFFFFFFFFFFF)
 
@@ -34,7 +34,7 @@ add_definitions(-DUSE_GC=true)
 # build dependencies before setting up project deets
 add_subdirectory(dep/libuv)
 
-add_subdirectory(include/asmjit)
+# add_subdirectory(include/asmjit)
 
 
 
