@@ -13,62 +13,66 @@
 #include <unordered_map>
 #include <vector>
 
-
-
 using namespace helion;
 using namespace std::string_literals;
 
 using namespace llvm;
 using namespace llvm::orc;
 
-
 static LLVMContext ctx;
 static IRBuilder<> builder(ctx);
 static std::unique_ptr<Module> mod;
 static std::unique_ptr<legacy::FunctionPassManager> fpm;
-static std::unique_ptr<helion::jit> jitses;
+static std::unique_ptr<helion::jit::isolate> isolate;
 
 
-
-
-static void init_module_and_pass_manager() {
+static void init_module_and_pass_manager(bool enable_optim = true) {
   // Open a new module.
   mod = llvm::make_unique<Module>("my cool jit", ctx);
-  mod->setDataLayout(jitses->get_target_machine().createDataLayout());
+  mod->setDataLayout(isolate->get_target_machine().createDataLayout());
+
   // Create a new pass manager attached to it.
   fpm = llvm::make_unique<legacy::FunctionPassManager>(mod.get());
-  // Do simple "peephole" optimizations and bit-twiddling optzns.
-  fpm->add(createInstructionCombiningPass());
-  // Reassociate expressions.
-  fpm->add(createReassociatePass());
-  // Eliminate Common SubExpressions.
-  fpm->add(createGVNPass());
-  // Simplify the control flow graph (deleting unreachable blocks, etc).
-  fpm->add(createCFGSimplificationPass());
+
+
+  if (enable_optim) {
+    // Do simple "peephole" optimizations and bit-twiddling optzns.
+    fpm->add(createInstructionCombiningPass());
+    // Reassociate expressions.
+    fpm->add(createReassociatePass());
+    // Eliminate Common SubExpressions.
+    fpm->add(createGVNPass());
+    // Simplify the control flow graph (deleting unreachable blocks, etc).
+    fpm->add(createCFGSimplificationPass());
+  }
+
   fpm->doInitialization();
 }
 
 
 
 int main(int argc, char **argv) {
-
+  // setup the LLVM global context
   InitializeNativeTarget();
   InitializeNativeTargetAsmPrinter();
   InitializeNativeTargetAsmParser();
-  jitses = std::make_unique<helion::jit>();
 
+  // create a new helion isolate
+  isolate = std::make_unique<helion::jit::isolate>();
 
-  init_module_and_pass_manager();
+  // setup the module and pass manager
+  init_module_and_pass_manager(false);
 
+  // create a prototype for the function, arguments are represented by a vector
+  // of their types.
   std::vector<Type *> ftype(2, Type::getDoubleTy(ctx));
+  // the FunctionType::get method takes `return type`, `args`, and if the
+  // function is vararg or not.
   FunctionType *FT = FunctionType::get(Type::getDoubleTy(ctx), ftype, false);
 
-  std::string name = "hello";
-
-
+  // create a name for the function
   llvm::Twine s = "add_doubles";
   auto *func = Function::Create(FT, Function::ExternalLinkage, 0, s, mod.get());
-
 
   std::vector<Value *> args;
 
@@ -80,7 +84,6 @@ int main(int argc, char **argv) {
     arg.setName(name);
     args.push_back(&arg);
   }
-
 
   BasicBlock *BB = BasicBlock::Create(ctx, "entry", func);
   builder.SetInsertPoint(BB);
@@ -94,39 +97,37 @@ int main(int argc, char **argv) {
   fpm->run(*func);
 
   // JIT the module containing the anonymous expression, keeping a handle so
-  // we can free it later.
-  auto H = jitses->add_module(std::move(mod));
+  // we can free it later. We need to keep a handle to it because our ownership
+  // of the pointer has been invalidated. we std::move it to the session
+  auto handle = isolate->add_module(std::move(mod));
 
-  // Search the JIT for the __anon_expr symbol.
-  auto ExprSymbol = jitses->findSymbol("add_doubles");
+  // search the jit for the symbol
+  auto ExprSymbol = isolate->find_symbol("add_doubles");
+
   assert(ExprSymbol && "Function not found");
 
   // Get the symbol's address and cast it to the right type (takes no
   // arguments, returns a double) so we can call it as a native function.
-  auto fptr = (double (*)(double, double))(intptr_t)cantFail(ExprSymbol.getAddress());
+  auto function =
+      (double (*)(double, double))(void*)cantFail(ExprSymbol.getAddress());
 
-  printf("%f\n", fptr(3, 4));
+  printf("%f\n", function(3, 4));
 
   // Delete the anonymous expression module from the JIT.
-  jitses->removeModule(H);
+  isolate->remove_module(handle);
 
+  // done playing around with JIT
 
-
-  /*
   // print every token from the file
   text src = read_file(argv[1]);
-
   try {
     auto res = parse_module(src, argv[1]);
     puts(res->str());
   } catch (std::exception &e) {
     puts(e.what());
   }
-  */
   return 0;
 }
-
-
 
 
 /**

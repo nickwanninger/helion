@@ -11,7 +11,7 @@ llvm_map_components_to_libnames(LLVM_LIBS all)
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 message(STATUS "LLVM_DEFINITIONS: ${LLVM_DEFINITIONS}")
-message(STATUS "LLVM_LIBS: ${LLVM_LIBS}")
+# message(STATUS "LLVM_LIBS: ${LLVM_LIBS}")
 
 
 add_library(gc_static STATIC IMPORTED)

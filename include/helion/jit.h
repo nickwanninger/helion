@@ -41,131 +41,125 @@
 
 #include <vector>  // for std::vector
 
+#include <helion/types.h>
 
 namespace helion {
 
   using namespace llvm;
   using namespace llvm::orc;
-  /*
-   * the helion::jit class acts as an application specific wrapper
-   * around LLVM's internal ideas and whatnot. It allows adding, removing,
-   * and accessing modules. Looking up symbols, and adding symbols, and
-   * has the entrypoint functions to compile an AST
-   */
-  class jit {
-   public:
-    using ObjLayerT = LegacyRTDyldObjectLinkingLayer;
-    using CompileLayerT = LegacyIRCompileLayer<ObjLayerT, SimpleCompiler>;
+
+  namespace jit {
+
+    /**
+     * an enviroment is where higher level value concepts are stored, like
+     * function->method mappings, modules, file caches, etc.
+     */
+    class enviroment {};
+
+    /*
+     * the helion::jit::isolate class acts as an application specific wrapper
+     * around LLVM's internal ideas and whatnot. It allows adding, removing,
+     * and accessing modules. Looking up symbols, and adding symbols
+     */
+    class isolate {
+     protected:
+      using ObjLayer = LegacyRTDyldObjectLinkingLayer;
+      using CompileLayer = LegacyIRCompileLayer<ObjLayer, SimpleCompiler>;
+
+      ExecutionSession session;
+      std::shared_ptr<SymbolResolver> symbol_resolver;
+      std::unique_ptr<TargetMachine> target_machine;
+      DataLayout data_layout;
+      ObjLayer obj_layer;
+      CompileLayer compile_layer;
+      std::vector<VModuleKey> module_keys;
+
+     public:
+      isolate()
+          : symbol_resolver(createLegacyLookupResolver(
+                session,
+                [this](const std::string &Name) {
+                  return obj_layer.findSymbol(Name, true);
+                },
+                [](Error Err) {
+                  cantFail(std::move(Err), "lookupFlags failed");
+                })),
+            target_machine(EngineBuilder().selectTarget()),
+            data_layout(target_machine->createDataLayout()),
+            obj_layer(session,
+                      [this](VModuleKey) {
+                        return ObjLayer::Resources{
+                            std::make_shared<SectionMemoryManager>(),
+                            symbol_resolver};
+                      }),
+            compile_layer(obj_layer, SimpleCompiler(*target_machine)) {
+        llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
+      }
+
+      inline TargetMachine &get_target_machine() { return *target_machine; }
+
+      inline VModuleKey add_module(std::unique_ptr<Module> m) {
+        auto K = session.allocateVModule();
+        cantFail(compile_layer.addModule(K, std::move(m)));
+        module_keys.push_back(K);
+        return K;
+      }
 
 
-    jit()
-        : symbol_resolver(createLegacyLookupResolver(
-              session,
-              [this](const std::string &Name) {
-                return obj_layer.findSymbol(Name, true);
-              },
-              [](Error Err) {
-                cantFail(std::move(Err), "lookupFlags failed");
-              })),
-          target_machine(EngineBuilder().selectTarget()),
-          data_layout(target_machine->createDataLayout()),
-          obj_layer(session,
-                    [this](VModuleKey) {
-                      return ObjLayerT::Resources{
-                          std::make_shared<SectionMemoryManager>(),
-                          symbol_resolver};
-                    }),
-          compile_layer(obj_layer, SimpleCompiler(*target_machine)) {
-      llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
-    }
+      void remove_module(VModuleKey key) {
+        module_keys.erase(find(module_keys, key));
+        cantFail(compile_layer.removeModule(key));
+      }
 
-
-    inline TargetMachine &get_target_machine() { return *target_machine; }
-
-    inline VModuleKey add_module(std::unique_ptr<Module> m) {
-      auto K = session.allocateVModule();
-      cantFail(compile_layer.addModule(K, std::move(m)));
-      module_keys.push_back(K);
-      return K;
-    }
-
-
-  void removeModule(VModuleKey key) {
-    module_keys.erase(find(module_keys, key));
-    cantFail(compile_layer.removeModule(key));
-  }
-
-  JITSymbol findSymbol(const std::string Name) {
-    return findMangledSymbol(mangle(Name));
-  }
+      JITSymbol find_symbol(const std::string Name) {
+        return findMangledSymbol(mangle(Name));
+      }
 
 
 
-   private:
-    // mangle a string
-    std::string mangle(const std::string &name) {
-      std::string mangled_name;
-      {
+     private:
+      // mangle a string
+      std::string mangle(const std::string &name) {
+        std::string mangled_name;
         auto mangled_name_stream = raw_string_ostream(mangled_name);
         Mangler::getNameWithPrefix(mangled_name_stream, name, data_layout);
+        return mangled_name;
       }
-      return mangled_name;
-    }
 
 
 
 
-    JITSymbol findMangledSymbol(const std::string &Name) {
-#ifdef _WIN32
-      // The symbol lookup of ObjectLinkingLayer uses the SymbolRef::SF_Exported
-      // flag to decide whether a symbol will be visible or not, when we call
-      // IRCompileLayer::findSymbolIn with ExportedSymbolsOnly set to true.
-      //
-      // But for Windows COFF objects, this flag is currently never set.
-      // For a potential solution see: https://reviews.llvm.org/rL258665
-      // For now, we allow non-exported symbols on Windows as a workaround.
-      const bool ExportedSymbolsOnly = false;
-#else
-      const bool ExportedSymbolsOnly = true;
-#endif
+      JITSymbol findMangledSymbol(const std::string &Name) {
+        const bool ExportedSymbolsOnly = true;
 
-      // Search modules in reverse order: from last added to first added.
-      // This is the opposite of the usual search order for dlsym, but makes
-      // more sense in a REPL where we want to bind to the newest available
-      // definition.
-      for (auto H : make_range(module_keys.rbegin(), module_keys.rend()))
-        if (auto Sym = compile_layer.findSymbolIn(H, Name, ExportedSymbolsOnly))
-          return Sym;
+        // Search modules in reverse order: from last added to first added.
+        // This is the opposite of the usual search order for dlsym, but makes
+        // more sense in a REPL where we want to bind to the newest available
+        // definition.
+        for (auto H : make_range(module_keys.rbegin(), module_keys.rend()))
+          if (auto Sym =
+                  compile_layer.findSymbolIn(H, Name, ExportedSymbolsOnly))
+            return Sym;
 
-      // If we can't find the symbol in the JIT, try looking in the host
-      // process.
-      if (auto SymAddr = RTDyldMemoryManager::getSymbolAddressInProcess(Name))
-        return JITSymbol(SymAddr, JITSymbolFlags::Exported);
-
-#ifdef _WIN32
-      // For Windows retry without "_" at beginning, as RTDyldMemoryManager uses
-      // GetProcAddress and standard libraries like msvcrt.dll use names
-      // with and without "_" (for example "_itoa" but "sin").
-      if (Name.length() > 2 && Name[0] == '_')
-        if (auto SymAddr =
-                RTDyldMemoryManager::getSymbolAddressInProcess(Name.substr(1)))
+        // If we can't find the symbol in the JIT, try looking in the host
+        // process.
+        if (auto SymAddr = RTDyldMemoryManager::getSymbolAddressInProcess(Name))
           return JITSymbol(SymAddr, JITSymbolFlags::Exported);
+
+#ifdef _WIN32
+        // For Windows retry without "_" at beginning, as RTDyldMemoryManager
+        // uses GetProcAddress and standard libraries like msvcrt.dll use names
+        // with and without "_" (for example "_itoa" but "sin").
+        if (Name.length() > 2 && Name[0] == '_')
+          if (auto SymAddr = RTDyldMemoryManager::getSymbolAddressInProcess(
+                  Name.substr(1)))
+            return JITSymbol(SymAddr, JITSymbolFlags::Exported);
 #endif
 
-      return nullptr;
-    }
-
-
-
-
-    ExecutionSession session;
-    std::shared_ptr<SymbolResolver> symbol_resolver;
-    std::unique_ptr<TargetMachine> target_machine;
-    DataLayout data_layout;
-    ObjLayerT obj_layer;
-    CompileLayerT compile_layer;
-    std::vector<VModuleKey> module_keys;
-  };
+        return nullptr;
+      }
+    };
+  }  // namespace jit
 
 }  // namespace helion
 

@@ -139,7 +139,7 @@ namespace helion {
       for (int i = 0; i < tok.col-1; i++) {
         _msg += " ";
       }
-      _msg += "^ here\n\n";
+      _msg += "^\n\n";
 
     }
     inline const char* what() const throw() {

@@ -8,7 +8,7 @@ llvm_map_components_to_libnames(LLVM_LIBS all)
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 message(STATUS "LLVM_DEFINITIONS: ${LLVM_DEFINITIONS}")
-message(STATUS "LLVM_LIBS: ${LLVM_LIBS}")
+# message(STATUS "LLVM_LIBS: ${LLVM_LIBS}")
 
 
 add_library(gc_static STATIC IMPORTED)
@@ -20,13 +20,13 @@ set_property(TARGET gc_static PROPERTY IMPORTED_LOCATION
     )
 
 add_executable(helion
-	src/helion/tokenizer.cpp
 	src/helion/text.cpp
-	src/helion/net.cpp
-	src/helion/main.cpp
 	src/helion/ast.cpp
-	src/helion/parser.cpp
+	src/helion/tokenizer.cpp
+	src/helion/net.cpp
 	src/helion/gc.cpp
+	src/helion/parser.cpp
+	src/helion/main.cpp
 )
 
 

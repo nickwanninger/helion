@@ -31,17 +31,17 @@
 #ifndef CEDAR_HH
 #define CEDAR_HH
 
-#include "helion/pstate.h"
-#include "helion/util.h"
-#include "helion/ast.h"
-#include "helion/parser.h"
-#include "helion/gc.h"
 #include "helion/net.h"
-#include "helion/jit.h"
-#include "helion/tokenizer.h"
 #include "helion/text.h"
-#include "helion/gcconfig.h"
 #include "helion/types.h"
+#include "helion/parser.h"
+#include "helion/gcconfig.h"
+#include "helion/gc.h"
+#include "helion/tokenizer.h"
+#include "helion/jit.h"
+#include "helion/ast.h"
+#include "helion/util.h"
+#include "helion/pstate.h"
 #include "helion/cloud/server.h"
 
 #endif // CEDAR_HH
