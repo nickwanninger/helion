@@ -5,6 +5,7 @@
 #ifndef __HELION_TYPES_H__
 #define __HELION_TYPES_H__
 
+#include <helion/text.h>
 #include <vector>
 
 namespace helion {
@@ -18,11 +19,23 @@ namespace helion {
    */
   class type {
    public:
+    class field {
+     public:
+      type *typ;
+      text name;
+    };
+
+    // if the type is primitive, this means it is represented by a set number of
+    // bits.
     bool primitive = false;
+    int bitcount = 0;
+
+    // once a type is done being created, it is considered 'locked' which means no
+    // code can update it. Types are immutable as a result
+    bool locked = false;
+
     type *extends = nullptr;
-    // Type parameters, ie: Type{T, U} etc...
-    std::vector<type *> params;
-    std::vector<type *> fields;
+    std::vector<field> fields;
     std::vector<function *> method;
   };
 

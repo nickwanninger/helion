@@ -7,20 +7,12 @@ header = """
 
 find_package(LLVM 8 CONFIG)
 # llvm_map_components_to_libnames(LLVM_LIBS core support demangle mcjit native)
-llvm_map_components_to_libnames(LLVM_LIBS all)
+llvm_map_components_to_libnames(LLVM_LIBS core support demangle mcjit native orcjit)
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 message(STATUS "LLVM_DEFINITIONS: ${LLVM_DEFINITIONS}")
 # message(STATUS "LLVM_LIBS: ${LLVM_LIBS}")
 
-
-add_library(gc_static STATIC IMPORTED)
-set_property(TARGET gc_static PROPERTY IMPORTED_LOCATION
-    ${PROJECT_SOURCE_DIR}/src/bdwgc/.libs/libgc.a
-)
-set_property(TARGET gc_static PROPERTY IMPORTED_LOCATION
-    ${PROJECT_SOURCE_DIR}/src/bdwgc/.libs/libgccpp.a
-    )
 
 """
 
@@ -28,7 +20,7 @@ footer = """
 
 
 target_include_directories(helion PRIVATE ${LLVM_INCLUDE_DIRS})
-target_link_libraries(helion uv_a ${CMAKE_DL_LIBS} ${LLVM_LIBS} -pthread -lboost_system)
+target_link_libraries(helion uv_a ${CMAKE_DL_LIBS} ${LLVM_LIBS} -lgc -lgccpp -pthread -lboost_system)
 
 set_target_properties(helion PROPERTIES OUTPUT_NAME helion)
 

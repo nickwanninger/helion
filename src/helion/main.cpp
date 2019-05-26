@@ -13,6 +13,10 @@
 #include <unordered_map>
 #include <vector>
 
+
+#define GC_THREADS
+#include <gc/gc.h>
+
 using namespace helion;
 using namespace std::string_literals;
 
@@ -23,16 +27,15 @@ static LLVMContext ctx;
 static IRBuilder<> builder(ctx);
 static std::unique_ptr<Module> mod;
 static std::unique_ptr<legacy::FunctionPassManager> fpm;
-static std::unique_ptr<helion::jit::isolate> isolate;
-
+static std::unique_ptr<helion::jit::enviroment> env;
 
 static void init_module_and_pass_manager(bool enable_optim = true) {
   // Open a new module.
-  mod = llvm::make_unique<Module>("my cool jit", ctx);
-  mod->setDataLayout(isolate->get_target_machine().createDataLayout());
+  mod = std::make_unique<Module>("my cool jit", ctx);
+  mod->setDataLayout(env->get_target_machine().createDataLayout());
 
   // Create a new pass manager attached to it.
-  fpm = llvm::make_unique<legacy::FunctionPassManager>(mod.get());
+  fpm = std::make_unique<legacy::FunctionPassManager>(mod.get());
 
 
   if (enable_optim) {
@@ -49,30 +52,36 @@ static void init_module_and_pass_manager(bool enable_optim = true) {
   fpm->doInitialization();
 }
 
+extern "C" void GC_allow_register_threads();
 
 
 int main(int argc, char **argv) {
+
+  // start the garbage collector
+  GC_INIT();
+  GC_allow_register_threads();
+
   // setup the LLVM global context
   InitializeNativeTarget();
   InitializeNativeTargetAsmPrinter();
   InitializeNativeTargetAsmParser();
 
-  // create a new helion isolate
-  isolate = std::make_unique<helion::jit::isolate>();
+  // create a new helion env
+  env = std::make_unique<helion::jit::enviroment>();
 
   // setup the module and pass manager
   init_module_and_pass_manager(false);
 
-  // create a prototype for the function, arguments are represented by a vector
-  // of their types.
+  // create a prototype for the function, arguments are represented
+  // by a vector of their types.
   std::vector<Type *> ftype(2, Type::getDoubleTy(ctx));
   // the FunctionType::get method takes `return type`, `args`, and if the
   // function is vararg or not.
   FunctionType *FT = FunctionType::get(Type::getDoubleTy(ctx), ftype, false);
 
   // create a name for the function
-  llvm::Twine s = "add_doubles";
-  auto *func = Function::Create(FT, Function::ExternalLinkage, 0, s, mod.get());
+  llvm::Twine name = "add_doubles";
+  auto *func = Function::Create(FT, Function::ExternalLinkage, 0, name, mod.get());
 
   std::vector<Value *> args;
 
@@ -95,15 +104,17 @@ int main(int argc, char **argv) {
 
   // run the optimization on the function
   fpm->run(*func);
+  mod->print(errs(), nullptr);
 
   // JIT the module containing the anonymous expression, keeping a handle so
   // we can free it later. We need to keep a handle to it because our ownership
   // of the pointer has been invalidated. we std::move it to the session
-  auto handle = isolate->add_module(std::move(mod));
+  auto handle = env->add_module(std::move(mod));
 
   // search the jit for the symbol
-  auto ExprSymbol = isolate->find_symbol("add_doubles");
+  auto ExprSymbol = env->find_symbol("add_doubles");
 
+  puts("here\n");
   assert(ExprSymbol && "Function not found");
 
   // Get the symbol's address and cast it to the right type (takes no
@@ -113,8 +124,9 @@ int main(int argc, char **argv) {
 
   printf("%f\n", function(3, 4));
 
+
   // Delete the anonymous expression module from the JIT.
-  isolate->remove_module(handle);
+  env->remove_module(handle);
 
   // done playing around with JIT
 

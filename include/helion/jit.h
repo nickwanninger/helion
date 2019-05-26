@@ -50,11 +50,7 @@ namespace helion {
 
   namespace jit {
 
-    /**
-     * an enviroment is where higher level value concepts are stored, like
-     * function->method mappings, modules, file caches, etc.
-     */
-    class enviroment {};
+
 
     /*
      * the helion::jit::isolate class acts as an application specific wrapper
@@ -159,6 +155,17 @@ namespace helion {
         return nullptr;
       }
     };
+
+
+
+    /**
+     * an enviroment is where higher level value concepts are stored, like
+     * function->method mappings, modules, file caches, etc.
+     */
+    class enviroment : public isolate {};
+
+
+
   }  // namespace jit
 
 }  // namespace helion
