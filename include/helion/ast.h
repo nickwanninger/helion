@@ -7,6 +7,7 @@
 
 #include <helion/text.h>
 #include <helion/tokenizer.h>
+#include <helion/util.h>
 #include <vector>
 
 namespace helion {
@@ -45,13 +46,13 @@ namespace helion {
         return error;
       }
 
-      virtual text str(int depth = 0) {
-        throw std::logic_error("call .str() on base node type");
-      };
+      virtual text str(int depth = 0) { return ""; };
 
       // virtual void codegen(void);
     };
 
+
+    using node_ptr = rc<node>;
 
     /**
      * a module AST node is what comes from parsing any top level expression,
@@ -60,7 +61,7 @@ namespace helion {
      */
     class module : public node {
      public:
-      std::vector<node *> stmts;
+      std::vector<node_ptr> stmts;
       NODE_FOOTER;
     };
 
@@ -82,51 +83,10 @@ namespace helion {
 
 
 
-    class type : public node {
-     public:
-      text name;
-    };
-
-    class lambda;
-    /**
-     * an argument is a dumb representation of `Type name` in a function
-     * signature. If there is no type, then it's implicity `Any` which means
-     * the function will be
-     */
-    class argument : public node {
-     public:
-      lambda *owner;
-      bool has_type = false;
-      text type;
-      text name;
-      NODE_FOOTER;
-    };
-
-
-    class lambda : public node {
-     public:
-      // if this value is true, then the 'lambda' node is inside a def block.
-      bool of_def = false;
-      NODE_FOOTER;
-    };
-
-
-    class def : public node {
-     public:
-      node *dst;
-      lambda *func;
-      std::vector<argument *> args;
-      type *return_type;
-
-
-      NODE_FOOTER;
-    };
-
-
     class binary_op : public node {
      public:
-      node *left;
-      node *right;
+      node_ptr left;
+      node_ptr right;
       text op;
       NODE_FOOTER;
     };
@@ -134,15 +94,15 @@ namespace helion {
 
     class dot : public node {
      public:
-      node *expr;
+      node_ptr expr;
       text sub;
       NODE_FOOTER;
     };
 
     class subscript : public node {
      public:
-      node *expr;
-      std::vector<node *> subs;
+      node_ptr expr;
+      std::vector<node_ptr> subs;
       NODE_FOOTER;
     };
 
@@ -154,14 +114,14 @@ namespace helion {
 
     class call : public node {
      public:
-      node *func;
-      std::vector<node *> args;
+      node_ptr func;
+      std::vector<node_ptr> args;
       NODE_FOOTER;
     };
 
     class tuple : public node {
      public:
-      std::vector<node *> vals;
+      std::vector<node_ptr> vals;
       NODE_FOOTER;
     };
 
@@ -173,10 +133,84 @@ namespace helion {
     };
 
 
+    class keyword : public node {
+      public:
+        text val;
+        NODE_FOOTER;
+    };
+
+    class nil : public node {
+      public:
+        NODE_FOOTER;
+    };
+
+
 
     class do_block : public node {
+     public:
+      std::vector<node_ptr> exprs;
+      NODE_FOOTER;
+    };
+
+
+
+    class return_node : public node {
+     public:
+      node_ptr val;
+      NODE_FOOTER;
+    };
+
+
+    /**
+     * a type_node represents the textual representation of a type
+     */
+    class type_node : public node {
+     public:
+      // what kind of type node is this
+      enum type_node_types {
+        NORMAL_TYPE,    // normal representation, so Int, Float, etc..
+        FUNCTION_TYPE,  // function type, so Fn(Int) -> Int for example
+        SLICE_TYPE,     // slice types, so [T] where T is another type
+      };
+
+      text name;
+      // type parameters, like Vector{Int} where Int would live in here.
+      std::vector<rc<type_node>> params;
+
+      NODE_FOOTER;
+    };
+
+    // represents the prototype of a function. Types can be derived from this
+    class prototype : public node {
+     public:
+      // represents a typed argument
+      struct argument {
+        // a pointer to the type of the argument. null here means it's unknown
+        // and must be inferred
+        rc<type_node> type = nullptr;
+        // the name of the argument is simply a string
+        text name;
+      };
+
+      std::vector<argument> args;
+
+      rc<type_node> return_type;
+
+      NODE_FOOTER;
+    };
+
+    class func : public node {
+     public:
+      rc<prototype> proto = nullptr;
+      node_ptr body;
+      NODE_FOOTER;
+    };
+
+
+
+    class command : public node {
       public:
-        std::vector<node *> exprs;
+        std::vector<node_ptr> args;
         NODE_FOOTER;
     };
 

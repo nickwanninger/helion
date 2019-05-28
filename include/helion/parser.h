@@ -17,17 +17,26 @@ namespace helion {
 
 
   struct presult {
+    using node_ptr = std::shared_ptr<ast::node>;
+
     bool failed = false;
-    std::vector<ast::node*> vals;
+    std::vector<node_ptr> vals;
     pstate state;
 
     inline presult() {}
-    inline presult(ast::node* v, pstate s) : state{s} { vals.push_back(v); }
-    inline presult(ast::node* v) { vals.push_back(v); }
+    inline presult(node_ptr v, pstate s) : state{s} { vals.push_back(v); }
+    inline presult(node_ptr v) { vals.push_back(v); }
 
-    inline operator ast::node*(void) {
+    inline operator node_ptr(void) {
       return vals.size() > 0 ? vals[0] : nullptr;
     }
+
+
+    template<typename T>
+    inline rc<T> as(void) {
+      return std::dynamic_pointer_cast<T>(vals[0]);
+    }
+
     inline operator pstate(void) { return state; }
     inline operator bool(void) { return !failed; }
 
@@ -70,7 +79,7 @@ namespace helion {
   }
   inline parse_func sequence(std::vector<parse_func> funcs) {
     return [funcs](pstate s) -> presult {
-      std::vector<ast::node*> emitted;
+      std::vector<std::shared_ptr<ast::node>> emitted;
       for (auto& fn : funcs) {
         auto r = fn(s);
         if (r) {

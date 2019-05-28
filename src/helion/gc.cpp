@@ -25,49 +25,32 @@
 #include <gc/gc.h>
 
 
-static void *_alloc(size_t size) {
-  void *p = GC_MALLOC(size);
-  // printf("alloc %zub -> %p\n", size, p);
+#define allocate _alloc
+#define deallocate _free
+
+static void* _alloc(size_t size) {
+  void* p = GC_MALLOC(size);
   return p;
 }
 
-static void _free(void *ptr) {
-  // printf("free %p\n", ptr);
-  GC_FREE(ptr);
+static void _free(void* ptr) {
+  if (ptr != nullptr) {
+    GC_FREE(ptr);
+  }
 }
 
 
-#define allocate _alloc
-#define deallocate _free
 
 
 #ifdef __GLIBC__
 #define _NOEXCEPT _GLIBCXX_USE_NOEXCEPT
 #endif
 
-void* operator new(size_t size) {
-  return allocate(size);
-}
-void* operator new[](size_t size) {
-  return allocate(size);
-}
+void* operator new(size_t size) { return allocate(size); }
+void* operator new[](size_t size) { return allocate(size); }
 
-
-
-void operator delete(void* ptr)_NOEXCEPT {
-  deallocate(ptr);
-}
-
-void operator delete[](void* ptr) _NOEXCEPT {
-  deallocate(ptr);
-}
-
-
-void operator delete(void* ptr, std::size_t s)_NOEXCEPT {
-  deallocate(ptr);
-}
-
-void operator delete[](void* ptr, std::size_t s) _NOEXCEPT {
-  deallocate(ptr);
-}
+void operator delete(void* ptr)_NOEXCEPT { deallocate(ptr); }
+void operator delete[](void* ptr) _NOEXCEPT { deallocate(ptr); }
+void operator delete(void* ptr, std::size_t s)_NOEXCEPT { deallocate(ptr); }
+void operator delete[](void* ptr, std::size_t s) _NOEXCEPT { deallocate(ptr); }
 

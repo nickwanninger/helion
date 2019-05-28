@@ -34,6 +34,8 @@
 using namespace helion;
 
 
+static auto is_space(rune c) { return c == ' ' || c == '\t'; }
+
 token::token(uint8_t t, text v, std::shared_ptr<text> src, size_t l, size_t c) {
   type = t;
   val = v;
@@ -67,13 +69,24 @@ token tokenizer::get(size_t i) {
   return tokens->at(i);
 }
 
+
+
 token tokenizer::emit(uint8_t t, text v) {
   token tok(t, v, source, line, column);
+
+
+  if (last_emit_ended != -1) {
+    if (is_space(source->operator[](last_emit_ended - 1))) {
+      tok.space_before = true;
+    }
+  }
+
+
+  last_emit_ended = index;
   tokens->push_back(tok);
   return tok;
 }
 
-token tokenizer::emit(uint8_t t) { return emit(t, ""); }
 
 rune tokenizer::next() {
   auto c = peek();
@@ -110,10 +123,10 @@ static auto in_set(text &set, rune c) {
   return false;
 }
 
-static auto is_space(rune c) { return c == ' ' || c == '\t'; }
-
 token tokenizer::lex() {
 top:
+
+  last_emit_ended = index;
 
 
 
@@ -221,7 +234,7 @@ top:
      *    goto top;
      *  }
      */
-    return emit(tok_term);
+    return emit(tok_term, ";");
   }
 
   if (c == '#') {
@@ -237,13 +250,13 @@ top:
     // grammar
     if (depth > 0) {
       depth--;
-      return emit(tok_dedent);
+      return emit(tok_dedent, "");
     }
     /**
      * this is where the tokenizer could be considered done
      */
     done = true;
-    return emit(tok_eof);
+    return emit(tok_eof, "");
   }
 
 
@@ -385,7 +398,7 @@ top:
     if (!(buf == ".")) {
       return emit(tok_num, buf);
     } else {
-      return emit(tok_dot);
+      return emit(tok_dot, ".");
     }
   }  // digit parsing
 
@@ -393,17 +406,17 @@ top:
 
 
   // operator parsing
-  static text operators = "&\\*+-/%!=<>≤≥≠.←|&^,";
+  static text operators = "&\\*+-/%!=<>≤≥≠.←|&^";
 
 
 
   static std::map<std::string, uint8_t> op_mappings = {
-      {"=", tok_assign}, {"==", tok_equal}, {"!=", tok_notequal},
-      {">", tok_gt},     {">=", tok_gte},   {"<", tok_lt},
-      {"<=", tok_lte},   {"+", tok_add},    {"-", tok_sub},
-      {"*", tok_mul},    {"/", tok_div},    {".", tok_dot},
-      {"->", tok_arrow}, {"|", tok_pipe},   {",", tok_comma},
-      {"%", tok_mod}};
+      {"=", tok_assign}, {"==", tok_equal},   {"!=", tok_notequal},
+      {">", tok_gt},     {">=", tok_gte},     {"<", tok_lt},
+      {"<=", tok_lte},   {"+", tok_add},      {"-", tok_sub},
+      {"*", tok_mul},    {"/", tok_div},      {".", tok_dot},
+      {"->", tok_arrow}, {"|", tok_pipe},     {",", tok_comma},
+      {"%", tok_mod},    {"::", tok_is_type}, {":", tok_colon}};
 
   if (in_charset(c, operators)) {
     std::string op;
@@ -420,7 +433,10 @@ top:
       auto t = op_mappings[op];
       return emit(t, op);
     } else {
-      throw std::logic_error("invalid operator");
+      std::string e;
+      e += "invalid operator: ";
+      e += op;
+      throw std::logic_error(e.c_str());
     }
   }
 
@@ -443,9 +459,7 @@ top:
   uint8_t type = tok_var;
 
   if (symbol[0] == ':') {
-    if (symbol.size() == 1)
-      throw std::logic_error(
-          "Keyword token must have at least one character after the ':'");
+    if (symbol.size() == 1) return emit(tok_colon, ":");
     type = tok_keyword;
   } else {
     // TODO(unicode)
@@ -465,11 +479,11 @@ top:
 
 
   static std::map<std::string, uint8_t> special_token_type_map = {
-      {"::", tok_is_type}, {"def", tok_def},     {"or", tok_or},
-      {"and", tok_and},    {"not", tok_not},     {"do", tok_do},
-      {"if", tok_if},      {"then", tok_then},   {"else", tok_else},
-      {"for", tok_for},    {"while", tok_while}, {"return", tok_return},
-      {"class", tok_class}, {"end", tok_end}};
+      {"::", tok_is_type},  {"def", tok_def},     {"or", tok_or},
+      {"and", tok_and},     {"not", tok_not},     {"do", tok_do},
+      {"if", tok_if},       {"then", tok_then},   {"else", tok_else},
+      {"for", tok_for},     {"while", tok_while}, {"return", tok_return},
+      {"class", tok_class}, {"end", tok_end},     {"nil", tok_nil}};
   if (special_token_type_map.count(symbol) != 0) {
     type = special_token_type_map[symbol];
   }

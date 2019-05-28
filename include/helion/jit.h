@@ -111,9 +111,6 @@ namespace helion {
         return findMangledSymbol(mangle(Name));
       }
 
-
-
-     private:
       // mangle a string
       std::string mangle(const std::string &name) {
         std::string mangled_name;
@@ -121,6 +118,9 @@ namespace helion {
         Mangler::getNameWithPrefix(mangled_name_stream, name, data_layout);
         return mangled_name;
       }
+
+
+     private:
 
 
 

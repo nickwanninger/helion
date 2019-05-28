@@ -26,6 +26,7 @@ tokens = [
     "and",
     "not",
     "is_type",
+    "colon",
     "do",
     "if",
     "then",
@@ -33,6 +34,7 @@ tokens = [
     "for",
     "while",
     "return",
+    "nil",
 
     "assign",
     "arrow",

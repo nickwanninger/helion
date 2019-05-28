@@ -40,6 +40,7 @@ namespace helion {
     ssize_t line;
     ssize_t col;
     int8_t type;
+    bool space_before = false;
     text val;
     inline token() { source = nullptr; }
     token(uint8_t, text, std::shared_ptr<text>, size_t line, size_t col);
@@ -70,6 +71,8 @@ namespace helion {
     size_t line = 0;
     size_t column = 0;
 
+    ssize_t last_emit_ended = -1;
+
     // depth is the indent depth of the current line
     size_t depth = 0;
     // int depth_delta = 0;
@@ -88,7 +91,6 @@ namespace helion {
      * according to the current state in the tokenizer
      */
     token emit(uint8_t, text);
-    token emit(uint8_t);
 
     void panic(std::string msg);
 

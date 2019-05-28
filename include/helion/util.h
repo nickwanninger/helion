@@ -15,6 +15,17 @@
 
 
 namespace helion {
+
+
+  // some short wrappers around shared_ptr and make_shared
+  template <typename T>
+  using rc = std::shared_ptr<T>;
+
+  template <class _Tp, class... _Args>
+  auto make(_Args &&... __args) {
+    return rc<_Tp>::make_shared(_VSTD::forward<_Args>(__args)...);
+  }
+
   inline text read_file(char *filename) {
     auto wif = std::ifstream(filename);
     wif.imbue(std::locale());
@@ -35,9 +46,17 @@ namespace helion {
 
 
   template <typename... Args>
-  inline void puts(Args ... args) {
+  inline void puts(Args... args) {
     (void)(int[]){0, ((void)(std::cout << args << " "), 0)...};
     std::cout << std::endl;
+  }
+
+
+  template <typename... Args>
+  inline void die(Args... args) {
+    (void)(int[]){0, ((void)(std::cout << args << " "), 0)...};
+    std::cout << std::endl;
+    exit(1);
   }
 
 }  // namespace helion

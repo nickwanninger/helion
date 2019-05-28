@@ -13,7 +13,6 @@
 #include <unordered_map>
 #include <vector>
 
-
 #define GC_THREADS
 #include <gc/gc.h>
 
@@ -55,12 +54,31 @@ static void init_module_and_pass_manager(bool enable_optim = true) {
 extern "C" void GC_allow_register_threads();
 
 
-int main(int argc, char **argv) {
+void jit_test(void);
 
+int main(int argc, char **argv) {
   // start the garbage collector
   GC_INIT();
   GC_allow_register_threads();
 
+  // print every token from the file
+  text src = read_file(argv[1]);
+  try {
+    auto res = parse_module(src, argv[1]);
+    puts(res->str());
+    delete res;
+  } catch (syntax_error &e) {
+    puts(e.what());
+  } catch (std::exception &e) {
+    puts("Other error:", e.what());
+  }
+  return 0;
+}
+
+
+
+
+void jit_test(void) {
   // setup the LLVM global context
   InitializeNativeTarget();
   InitializeNativeTargetAsmPrinter();
@@ -80,8 +98,9 @@ int main(int argc, char **argv) {
   FunctionType *FT = FunctionType::get(Type::getDoubleTy(ctx), ftype, false);
 
   // create a name for the function
-  llvm::Twine name = "add_doubles";
-  auto *func = Function::Create(FT, Function::ExternalLinkage, 0, name, mod.get());
+  llvm::Twine name = "add";
+  auto *func =
+      Function::Create(FT, Function::ExternalLinkage, 0, name, mod.get());
 
   std::vector<Value *> args;
 
@@ -98,6 +117,7 @@ int main(int argc, char **argv) {
   builder.SetInsertPoint(BB);
 
   Value *res = builder.CreateFAdd(args[0], args[1]);
+
   builder.CreateRet(res);
 
   verifyFunction(*func);
@@ -106,39 +126,27 @@ int main(int argc, char **argv) {
   fpm->run(*func);
   mod->print(errs(), nullptr);
 
+
+  GC_gcollect();
   // JIT the module containing the anonymous expression, keeping a handle so
   // we can free it later. We need to keep a handle to it because our ownership
   // of the pointer has been invalidated. we std::move it to the session
   auto handle = env->add_module(std::move(mod));
 
   // search the jit for the symbol
-  auto ExprSymbol = env->find_symbol("add_doubles");
+  auto ExprSymbol = env->find_symbol("add");
 
-  puts("here\n");
   assert(ExprSymbol && "Function not found");
 
   // Get the symbol's address and cast it to the right type (takes no
   // arguments, returns a double) so we can call it as a native function.
-  auto function =
-      (double (*)(double, double))(void*)cantFail(ExprSymbol.getAddress());
+  auto add =
+      (double (*)(double, double))(void *)cantFail(ExprSymbol.getAddress());
 
-  printf("%f\n", function(3, 4));
-
+  printf("%f\n", add(3, 4));
 
   // Delete the anonymous expression module from the JIT.
   env->remove_module(handle);
-
-  // done playing around with JIT
-
-  // print every token from the file
-  text src = read_file(argv[1]);
-  try {
-    auto res = parse_module(src, argv[1]);
-    puts(res->str());
-  } catch (std::exception &e) {
-    puts(e.what());
-  }
-  return 0;
 }
 
 

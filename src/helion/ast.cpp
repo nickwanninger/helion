@@ -19,10 +19,11 @@ text ast::module::str(int depth) {
   for (auto stmt : stmts) {
     s += "# ";
     int status;
-    char* demangled = abi::__cxa_demangle(typeid(*stmt).name(), 0, 0, &status);
+    ast::node* p = stmt.get();
+    char* demangled = abi::__cxa_demangle(typeid(*p).name(), 0, 0, &status);
     s += demangled;
     free(demangled);
-    sprintf(ptr, " at %p\n", stmt);
+    sprintf(ptr, " at %p\n", stmt.get());
     s += ptr;
     s += stmt->str(0);
     s += "\n\n";
@@ -45,56 +46,16 @@ text ast::number::str(int) {
 
 
 
-text ast::argument::str(int) {
-  text s;
-  s += type;
-  s += " ";
-  s += name;
-  return s;
-}
-
-
-
-
-text ast::def::str(int depth) {
-  text indent = "";
-  for (int i = 0; i < depth; i++) indent += "  ";
-  text s;
-  s += indent;
-  s += "def ";
-
-  s += dst->str();
-  s += " ";
-  for (size_t i = 0; i < args.size(); i++) {
-    s += args[i]->str();
-    if (i < args.size() - 1) {
-      s += ", ";
-    }
-  }
-  s += "\n";
-
-  /**
-   * TODO: stringify the body
-   */
-  s += indent;
-  s += "# body...\n";
-
-  s += indent;
-  s += "end";
-  return s;
-}
-
-
 
 text ast::binary_op::str(int depth) {
   text s;
-  s += "(";
+  // s += "(";
   s += left->str();
   s += " ";
   s += op;
   s += " ";
   s += right->str();
-  s += ")";
+  // s += ")";
   return s;
 }
 
@@ -139,7 +100,7 @@ text ast::call::str(int) {
     if (v != nullptr) {
       t += v->str();
     }
-    if (i < args.size() - 1) t += ",";
+    if (i < args.size() - 1) t += ", ";
   }
   t += ")";
   return t;
@@ -176,12 +137,22 @@ text ast::string::str(int) {
 }
 
 
+text ast::keyword::str(int) {
+  text s;
+  s += val;
+  return s;
+}
+
+text ast::nil::str(int) {
+  text s;
+  s += "nil";
+  return s;
+}
+
 
 
 
 text ast::do_block::str(int depth) {
-
-
   text indent = "";
   for (int i = 0; i < depth; i++) indent += "  ";
 
@@ -191,11 +162,92 @@ text ast::do_block::str(int depth) {
   for (auto e : exprs) {
     s += indent;
     s += "  ";
-    s += e->str(depth+1);
+    s += e->str(depth + 1);
     s += "\n";
   }
   s += indent;
   s += "end";
 
+  return s;
+}
+
+
+
+text ast::type_node::str(int) {
+  text s;
+  s += name;
+
+  if (params.size() > 0) {
+    s += "<";
+
+    for (size_t i = 0; i < params.size(); i++) {
+      auto& param = params[i];
+      s += param->str();
+      if (i < params.size() - 1) {
+        s += ", ";
+      }
+    }
+    s += ">";
+  }
+  return s;
+}
+
+
+text ast::prototype::str(int) {
+  text s;
+
+  s += "(";
+
+  for (size_t i = 0; i < args.size(); i++) {
+    auto& arg = args[i];
+    if (arg.type != nullptr) {
+      s += arg.type->str();
+      s += " ";
+    }
+    s += arg.name;
+    if (i < args.size() - 1) {
+      s += ", ";
+    }
+  }
+  s += ")";
+
+  if (return_type != nullptr) {
+    s += " : ";
+    s += return_type->str();
+  }
+  return s;
+}
+
+text ast::func::str(int depth) {
+  text s;
+  s += proto->str();
+  s += " -> ";
+  s += body->str(depth + 1);
+  return s;
+}
+
+
+text ast::return_node::str(int depth) {
+  text s;
+  s += "return ";
+  s += val->str(depth+1);
+  return s;
+}
+
+
+text ast::command::str(int depth) {
+  text s;
+
+  // s += "command: ";
+  // s += "(";
+
+  for (size_t i = 0; i < args.size(); i++) {
+    auto& arg = args[i];
+    s += arg->str();
+    if (i < args.size() - 1) {
+      s += " ";
+    }
+  }
+  // s += ")";
   return s;
 }
