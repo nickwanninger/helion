@@ -5,6 +5,7 @@ build
 test/test
 test/*.o
 bin
+.vscode
 cmake-build-debug
 *.h.pch
 *.h.gch

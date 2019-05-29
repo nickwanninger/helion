@@ -46,16 +46,15 @@ text ast::number::str(int) {
 
 
 
-
 text ast::binary_op::str(int depth) {
   text s;
-  // s += "(";
+  s += "(";
   s += left->str();
   s += " ";
   s += op;
   s += " ";
   s += right->str();
-  // s += ")";
+  s += ")";
   return s;
 }
 
@@ -175,19 +174,29 @@ text ast::do_block::str(int depth) {
 
 text ast::type_node::str(int) {
   text s;
-  s += name;
 
-  if (params.size() > 0) {
-    s += "<";
+  if (type == NORMAL_TYPE) {
+    s += name;
 
-    for (size_t i = 0; i < params.size(); i++) {
-      auto& param = params[i];
-      s += param->str();
-      if (i < params.size() - 1) {
-        s += ", ";
+    if (params.size() > 0) {
+      s += "<";
+
+      for (size_t i = 0; i < params.size(); i++) {
+        auto& param = params[i];
+        s += param->str();
+        if (i < params.size() - 1) {
+          s += ", ";
+        }
       }
+      s += ">";
     }
-    s += ">";
+    return s;
+  }
+  if (type == SLICE_TYPE) {
+    s += "[";
+    s += params[0]->str();
+    s += "]";
+    return s;
   }
   return s;
 }
@@ -230,24 +239,44 @@ text ast::func::str(int depth) {
 text ast::return_node::str(int depth) {
   text s;
   s += "return ";
-  s += val->str(depth+1);
+  s += val->str(depth + 1);
   return s;
 }
 
 
-text ast::command::str(int depth) {
+text ast::if_node::str(int depth) {
   text s;
 
-  // s += "command: ";
-  // s += "(";
 
-  for (size_t i = 0; i < args.size(); i++) {
-    auto& arg = args[i];
-    s += arg->str();
-    if (i < args.size() - 1) {
-      s += " ";
+  text indent = "";
+  for (int i = 0; i < depth; i++) indent += "  ";
+
+
+  bool printed_if = false;
+  for (size_t i = 0; i < conds.size(); i++) {
+    auto& c = conds[i];
+
+    if (printed_if) {
+      s += indent;
+    }
+
+    if (c.cond) {
+      s += !printed_if ? "if " : "elif ";
+      printed_if = true;
+      s += c.cond->str();
+      s += " then\n";
+
+    } else {
+      s += "else\n";
+    }
+    for (auto & e : c.body) {
+      s += indent;
+      s += "  ";
+      s += e->str(depth+1);
+      s += "\n";
     }
   }
-  // s += ")";
+  s += indent;
+  s += "end";
   return s;
 }

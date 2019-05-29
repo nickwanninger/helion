@@ -29,13 +29,13 @@
 #define deallocate _free
 
 static void* _alloc(size_t size) {
-  void* p = GC_MALLOC(size);
+  void* p = malloc(size);
   return p;
 }
 
 static void _free(void* ptr) {
   if (ptr != nullptr) {
-    GC_FREE(ptr);
+    free(ptr);
   }
 }
 

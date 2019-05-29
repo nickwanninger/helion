@@ -62,8 +62,9 @@ namespace helion {
 
   using parse_func = std::function<presult(pstate)>;
 
-  inline presult pfail(void) {
+  inline presult pfail(pstate s) {
     presult p;
+    p.state = s;
     p.failed = true;
     return p;
   }
@@ -74,7 +75,7 @@ namespace helion {
         auto r = fn(s);
         if (r) return r;
       }
-      return pfail();
+      return pfail(s);
     };
   }
   inline parse_func sequence(std::vector<parse_func> funcs) {
@@ -88,7 +89,7 @@ namespace helion {
             emitted.push_back(v);
           }
         } else {
-          return pfail();
+          return pfail(s);
         }
       }
       presult p;

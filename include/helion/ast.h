@@ -22,7 +22,6 @@ namespace helion {
 #define NODE_FOOTER        \
  public:                   \
   text str(int depth = 0); \
-  // void codegen(void);
 
     // @abstract, all ast::nodes extend from this publically
     class node {
@@ -92,6 +91,7 @@ namespace helion {
     };
 
 
+
     class dot : public node {
      public:
       node_ptr expr;
@@ -134,14 +134,14 @@ namespace helion {
 
 
     class keyword : public node {
-      public:
-        text val;
-        NODE_FOOTER;
+     public:
+      text val;
+      NODE_FOOTER;
     };
 
     class nil : public node {
-      public:
-        NODE_FOOTER;
+     public:
+      NODE_FOOTER;
     };
 
 
@@ -167,13 +167,15 @@ namespace helion {
     class type_node : public node {
      public:
       // what kind of type node is this
-      enum type_node_types {
+      enum type_node_type {
         NORMAL_TYPE,    // normal representation, so Int, Float, etc..
         FUNCTION_TYPE,  // function type, so Fn(Int) -> Int for example
         SLICE_TYPE,     // slice types, so [T] where T is another type
       };
 
       text name;
+
+      type_node_type type = NORMAL_TYPE;
       // type parameters, like Vector{Int} where Int would live in here.
       std::vector<rc<type_node>> params;
 
@@ -207,12 +209,19 @@ namespace helion {
     };
 
 
-
-    class command : public node {
+    class if_node : public node {
       public:
-        std::vector<node_ptr> args;
+        struct condition {
+          std::shared_ptr<ast::node> cond;
+          std::vector<std::shared_ptr<ast::node>> body;
+        };
+
+        bool has_default = false;
+
+        std::vector<condition> conds;
         NODE_FOOTER;
     };
+
 
   }  // namespace ast
 

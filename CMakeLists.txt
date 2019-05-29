@@ -14,37 +14,22 @@ SET(CMAKE_ASM_FLAGS "${CFLAGS} -x assembler-with-cpp")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DBUILD_MODE=Debug -fno-omit-frame-pointer")
 set(CMAKE_C_FLAGS_DEBUG "-g -O0 -DBUILD_MODE=Debug -fno-omit-frame-pointer")
 
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DBUILD_MODE=Release")
-set(CMAKE_C_FLAGS_RELEASE   "-O3 -DBUILD_MODE=Release")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -flto -DBUILD_MODE=Release")
+set(CMAKE_C_FLAGS_RELEASE   "-O3 -flto -DBUILD_MODE=Release")
 
 
-
-# set(ASMJIT_STATIC TRUE)
-# set(ASMJIT_RELEASE TRUE)
 
 add_definitions(-DPOINTER_MASK=0x0007FFFFFFFFFFFF)
 
 
 add_definitions(-DUSE_GC=true)
 
-# add_definitions(-DASMJIT_CUSTOM_ALLOC=GC_MALLOC)
-# add_definitions(-DASMJIT_CUSTOM_REALLOC=GC_REALLOC)
-# add_definitions(-DASMJIT_CUSTOM_FREE=GC_FREE)
-
 # build dependencies before setting up project deets
 add_subdirectory(dep/libuv)
 
-# add_subdirectory(include/asmjit)
 
 
-
-set(BUILD_SHARED_LIBS OFF)
-
-option(REPLXX_BuildExamples "Build the examples." OFF)
-set(REPLXX_BuildExamples OFF)
-
-# add_subdirectory(dep/replxx)
-
+# set(BUILD_SHARED_LIBS ON)
 
 link_directories(/usr/local/lib)
 include_directories(/usr/local/include)

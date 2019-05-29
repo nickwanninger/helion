@@ -33,11 +33,12 @@ static presult expand_expression(presult);
 static presult parse_function_args(pstate);
 static presult parse_function_literal(pstate);
 static presult parse_return(pstate);
+static presult parse_if(pstate);
 
 
 
 
-auto glob_term(pstate s) {
+static auto glob_term(pstate s) {
   while (s.first().type == tok_term) {
     s = s.next();
   }
@@ -54,6 +55,9 @@ ast::module *helion::parse_module(pstate s) {
   auto *module = new ast::module();
 
   while (true) {
+
+    s = glob_term(s);
+    if (s.first().type == tok_eof) break;
     // while we can, parse a statement
     if (auto r = parse_expr(s); r) {
       // inherit the state from the parser. This allows us to pick up right
@@ -100,7 +104,7 @@ ast::module *helion::parse_module(text s, text pth) {
  */
 static presult parse_expr(pstate s, bool do_binary) {
   token begin = s;
-  auto res = pfail();
+  auto res = pfail(s);
 
 #define TRY(expr)                \
   {                              \
@@ -118,10 +122,11 @@ static presult parse_expr(pstate s, bool do_binary) {
   if (!res && begin.type == tok_do) TRY(parse_do(s));
   if (!res && begin.type == tok_return) TRY(parse_return(s));
   if (!res && begin.type == tok_nil) TRY(parse_nil(s));
+  if (!res && begin.type == tok_if) TRY(parse_if(s));
 
 parse_success:
   if (!res) {
-    return pfail();
+    return pfail(s);
   }
 
   res = expand_expression(res);
@@ -134,6 +139,8 @@ parse_success:
 
 static presult expand_expression(presult r) {
   pstate initial_state = r;
+
+  bool can_assign = false;
   while (true) {
     rc<ast::node> expr = r;
     pstate s = r;
@@ -155,6 +162,7 @@ static presult expand_expression(presult r) {
         v->set_bounds(start_token, t);
         v->expr = expr;
         v->sub = t.val;
+        can_assign = true;
         r = presult(v, s);
         continue;
       }
@@ -176,6 +184,7 @@ static presult expand_expression(presult r) {
       c->args = res.vals;
       s++;
       r = presult(c, s);
+      can_assign = false;
       continue;
     }
 
@@ -191,7 +200,7 @@ static presult expand_expression(presult r) {
           break;
         }
         auto res = parse_expr(s, true);
-        if (!res) return pfail();
+        if (!res) return pfail(s);
 
         sub->subs.push_back(res);
         s = res;
@@ -207,6 +216,7 @@ static presult expand_expression(presult r) {
       s++;
 
       sub->set_bounds(initial_state, t);
+      can_assign = true;
       r = presult(sub, s);
       continue;
     }
@@ -335,7 +345,7 @@ static presult parse_paren(pstate s) {
       break;
     }
     auto res = parse_expr(s, true);
-    if (!res) return pfail();
+    if (!res) return pfail(s);
 
     exprs.push_back(res);
     s = res;
@@ -388,7 +398,7 @@ static presult parse_function_args(pstate s) {
 
     auto res = parse_expr(s, true);
     if (!res) {
-      return pfail();
+      return pfail(s);
     }
 
     args.push_back(res);
@@ -424,6 +434,24 @@ static presult parse_binary_rhs(pstate s, int expr_prec, rc<ast::node> lhs) {
       {">", 10}, {">=", 10}, {">>", 15}, {"<<", 15}, {"+", 20}, {"-", 20},
       {"*", 40}, {"/", 40},  {"%", 40},
   });
+
+  static const auto assignment_ops = std::map<std::string, int>(
+      {{"=", 0}, {"+=", 0}, {"-=", 0}, {"*=", 0}, {"/=", 0}});
+
+
+  if (assignment_ops.count(s.first().val) != 0) {
+    auto op = s.first().val;
+    s++;
+    auto rhs = parse_expr(s);
+
+    if (!rhs) throw syntax_error(s, "failed to parse rhs of assignment");
+    auto n = make<ast::binary_op>();
+    n->op = op;
+    n->left = lhs;
+    n->right = rhs;
+    return presult(n, rhs);
+  }
+
   while (true) {
     token tok = s;
     auto bin_op = tok.val;
@@ -444,7 +472,7 @@ static presult parse_binary_rhs(pstate s, int expr_prec, rc<ast::node> lhs) {
     auto rhs = parse_expr(s, false);
     if (!rhs) {
       throw syntax_error(s, "binary expression missing right hand side");
-      return pfail();
+      return pfail(s);
     }
 
     s = rhs;
@@ -457,7 +485,7 @@ static presult parse_binary_rhs(pstate s, int expr_prec, rc<ast::node> lhs) {
         rhs = parse_binary_rhs(s, token_prec + 1, rhs);
         if (!rhs) {
           throw syntax_error(s, "malformed binary expression");
-          return pfail();
+          return pfail(s);
         }
         s = rhs;
       }
@@ -485,7 +513,7 @@ static presult parse_binary_rhs(pstate s, int expr_prec, rc<ast::node> lhs) {
 
     lhs = n;
   }
-  return pfail();
+  return pfail(s);
 }
 
 
@@ -516,11 +544,14 @@ static presult parse_do(pstate s) {
   }
   s++;
 
-
   return presult(block, s);
 }
 
 
+/**
+ * parse a type out into the special type representation.
+ * This function absorbs the generic syntax as well
+ */
 static presult parse_type(pstate s) {
   // base case, actual type parsing
   if (s.first().type == tok_type) {
@@ -561,10 +592,31 @@ static presult parse_type(pstate s) {
   }
 
   if (s.first().type == tok_left_square) {
-    throw syntax_error(s, "parsing of slice type literals unsuported");
+    s++;
+
+    auto tr = parse_type(s);
+    if (!tr) {
+      throw syntax_error(s,
+                         "Slice type needs a type within the square brackets");
+    }
+
+    s = tr;
+
+    if (s.first().type != tok_right_square) {
+      throw syntax_error(s, "unclosed square brackets");
+    }
+
+    s++;
+
+    auto type = make<ast::type_node>();
+    type->name = "Slice";
+    type->type = ast::type_node::type_node_type::SLICE_TYPE;
+    type->params.push_back(tr.as<ast::type_node>());
+
+    return presult(type, s);
   }
 
-  return pfail();
+  return pfail(s);
 }
 
 
@@ -605,7 +657,7 @@ static presult parse_prototype(pstate s) {
     // die(s.first());
 
     if (s.first().type != tok_var) {
-      return pfail();
+      return pfail(s);
       // throw syntax_error(s, "invalid argument name");
     }
 
@@ -618,7 +670,7 @@ static presult parse_prototype(pstate s) {
     proto->args.push_back(a);
 
     if (s.first().type != tok_comma && s.first().type != tok_right_paren) {
-      return pfail();
+      return pfail(s);
       throw syntax_error(s, "unexpected token");
     }
     if (s.first().type == tok_comma) s++;
@@ -645,7 +697,7 @@ static presult parse_function_literal(pstate s) {
   // parse the prototype starting at a tok_left_paren
   auto protor = parse_prototype(s);
   if (!protor) {
-    return pfail();
+    return pfail(s);
   }
 
   auto proto = protor.as<ast::prototype>();
@@ -700,4 +752,54 @@ static presult parse_return(pstate s) {
   s = es;
   ret->val = es;
   return presult(ret, s);
+}
+
+
+static presult parse_if(pstate s) {
+  // conds is an array of conditions, basically each of the
+  // mutually exclusive blocks in an if, elif, else chain
+  // though the `else` block is handled differently, and has
+  // no cond
+  std::vector<ast::if_node::condition> conds;
+  auto n = make<ast::if_node>();
+  auto start_token = s.first();
+
+  while (s.first().type != tok_end) {
+    ast::if_node::condition cond;
+    if (s.first().type == tok_if || s.first().type == tok_elif) {
+      s++;
+      auto condr = parse_expr(s);
+      if (!condr) throw syntax_error(s, "invalid condition in if block");
+      s = condr;
+      cond.cond = condr.as<ast::node>();
+    } else if (s.first().type == tok_else) {
+      n->has_default = true;
+      s++;
+    }
+
+    s = glob_term(s);
+    if (s.first().type == tok_then) s++;
+    s = glob_term(s);
+
+    auto ntok = s.first().type;
+    while (ntok != tok_elif && ntok != tok_else && ntok != tok_end) {
+      auto expr_res = parse_expr(s);
+
+      if (!expr_res) throw syntax_error(s, "expected expression");
+
+      s = expr_res;
+      cond.body.push_back(expr_res);
+
+      s = glob_term(s);
+
+      ntok = s.first().type;
+    }
+    n->conds.push_back(cond);
+  }
+
+  n->set_bounds(start_token, s.first());
+  s++;
+
+
+  return presult(n, s);
 }

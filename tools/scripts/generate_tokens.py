@@ -31,6 +31,7 @@ tokens = [
     "if",
     "then",
     "else",
+    "elif",
     "for",
     "while",
     "return",

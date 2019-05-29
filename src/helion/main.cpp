@@ -26,30 +26,11 @@ static LLVMContext ctx;
 static IRBuilder<> builder(ctx);
 static std::unique_ptr<Module> mod;
 static std::unique_ptr<legacy::FunctionPassManager> fpm;
+static std::unique_ptr<legacy::PassManager> mpm;
+
+
 static std::unique_ptr<helion::jit::enviroment> env;
 
-static void init_module_and_pass_manager(bool enable_optim = true) {
-  // Open a new module.
-  mod = std::make_unique<Module>("my cool jit", ctx);
-  mod->setDataLayout(env->get_target_machine().createDataLayout());
-
-  // Create a new pass manager attached to it.
-  fpm = std::make_unique<legacy::FunctionPassManager>(mod.get());
-
-
-  if (enable_optim) {
-    // Do simple "peephole" optimizations and bit-twiddling optzns.
-    fpm->add(createInstructionCombiningPass());
-    // Reassociate expressions.
-    fpm->add(createReassociatePass());
-    // Eliminate Common SubExpressions.
-    fpm->add(createGVNPass());
-    // Simplify the control flow graph (deleting unreachable blocks, etc).
-    fpm->add(createCFGSimplificationPass());
-  }
-
-  fpm->doInitialization();
-}
 
 extern "C" void GC_allow_register_threads();
 
@@ -57,12 +38,24 @@ extern "C" void GC_allow_register_threads();
 void jit_test(void);
 
 int main(int argc, char **argv) {
+  // jit_test();
+
+  // return 0;
+
+
   // start the garbage collector
   GC_INIT();
   GC_allow_register_threads();
 
+  if (argc < 2) {
+    printf("usage: helion <filename>\n");
+    return -1;
+  }
+
   // print every token from the file
   text src = read_file(argv[1]);
+
+
   try {
     auto res = parse_module(src, argv[1]);
     puts(res->str());
@@ -78,72 +71,152 @@ int main(int argc, char **argv) {
 
 
 
+static void init_module_and_pass_manager() {
+  // Open a new module.
+  mod = std::make_unique<Module>("my cool jit", ctx);
+  mod->setDataLayout(env->get_target_machine().createDataLayout());
+
+  // Create a new pass manager attached to it.
+  fpm = std::make_unique<legacy::FunctionPassManager>(mod.get());
+
+  // Do simple "peephole" optimizations and bit-twiddling optzns.
+  fpm->add(createInstructionCombiningPass());
+  // Reassociate expressions.
+  fpm->add(createReassociatePass());
+  // Eliminate Common SubExpressions.
+  fpm->add(createGVNPass());
+  // Simplify the control flow graph (deleting unreachable blocks, etc).
+  fpm->add(createCFGSimplificationPass());
+
+  // fpm->add(createLoopUnrollPass());
+
+  // fpm->add(createLoopVectorizePass());
+  // fpm->add(createLoadStoreVectorizerPass());
+
+  fpm->doInitialization();
+
+
+  // initialize the module pass manager
+  mpm = std::make_unique<legacy::PassManager>();
+  mpm->add(createFunctionInliningPass(3, 0, false));
+}
+
+
 void jit_test(void) {
   // setup the LLVM global context
   InitializeNativeTarget();
   InitializeNativeTargetAsmPrinter();
   InitializeNativeTargetAsmParser();
 
+
   // create a new helion env
   env = std::make_unique<helion::jit::enviroment>();
 
   // setup the module and pass manager
-  init_module_and_pass_manager(false);
+  init_module_and_pass_manager();
 
   // create a prototype for the function, arguments are represented
   // by a vector of their types.
   std::vector<Type *> ftype(2, Type::getDoubleTy(ctx));
   // the FunctionType::get method takes `return type`, `args`, and if the
   // function is vararg or not.
-  FunctionType *FT = FunctionType::get(Type::getDoubleTy(ctx), ftype, false);
+  FunctionType *add_ft =
+      FunctionType::get(Type::getDoubleTy(ctx), ftype, false);
 
   // create a name for the function
   llvm::Twine name = "add";
-  auto *func =
-      Function::Create(FT, Function::ExternalLinkage, 0, name, mod.get());
+  auto *add_func =
+      Function::Create(add_ft, Function::ExternalLinkage, 0, name, mod.get());
 
   std::vector<Value *> args;
 
   // Set names for all arguments.
   unsigned i = 0;
-  for (auto &arg : func->args()) {
+  for (auto &arg : add_func->args()) {
     std::string name = "arg";
     name += std::to_string(i++);
     arg.setName(name);
     args.push_back(&arg);
   }
 
-  BasicBlock *BB = BasicBlock::Create(ctx, "entry", func);
+  BasicBlock *BB = BasicBlock::Create(ctx, "entry", add_func);
   builder.SetInsertPoint(BB);
 
   Value *res = builder.CreateFAdd(args[0], args[1]);
 
   builder.CreateRet(res);
 
-  verifyFunction(*func);
+  verifyFunction(*add_func, &errs());
 
   // run the optimization on the function
-  fpm->run(*func);
+  fpm->run(*add_func);
+
+
+  Function *times_two_func = nullptr;
+
+  {
+    std::vector<Type *> ftype(1, Type::getDoubleTy(ctx));
+
+    FunctionType *FT = FunctionType::get(Type::getDoubleTy(ctx), ftype, false);
+
+    llvm::Twine name = "times_two";
+
+    times_two_func =
+        Function::Create(FT, Function::ExternalLinkage, 0, name, mod.get());
+
+    std::vector<Value *> args;
+
+    // Set names for all arguments.
+    unsigned i = 0;
+    for (auto &arg : times_two_func->args()) {
+      std::string name = "arg";
+      name += std::to_string(i++);
+      arg.setName(name);
+      args.push_back(&arg);
+    }
+
+    BasicBlock *BB = BasicBlock::Create(ctx, "entry", times_two_func);
+    builder.SetInsertPoint(BB);
+
+    std::vector<Value *> argsv;
+    argsv.push_back(args[0]);
+    argsv.push_back(args[0]);
+
+
+    Value *res = builder.CreateCall(add_func, argsv);
+
+    builder.CreateRet(res);
+
+    verifyFunction(*times_two_func);
+
+    verifyFunction(*times_two_func, &errs());
+
+    // run the optimization on the function
+    fpm->run(*times_two_func);
+  }
+
+
+  mpm->run(*mod);
+
   mod->print(errs(), nullptr);
 
 
-  GC_gcollect();
   // JIT the module containing the anonymous expression, keeping a handle so
   // we can free it later. We need to keep a handle to it because our ownership
   // of the pointer has been invalidated. we std::move it to the session
   auto handle = env->add_module(std::move(mod));
 
   // search the jit for the symbol
-  auto ExprSymbol = env->find_symbol("add");
+  auto ExprSymbol = env->find_symbol("times_two");
 
   assert(ExprSymbol && "Function not found");
 
   // Get the symbol's address and cast it to the right type (takes no
   // arguments, returns a double) so we can call it as a native function.
-  auto add =
-      (double (*)(double, double))(void *)cantFail(ExprSymbol.getAddress());
+  auto times_two =
+      (double (*)(double))(void *)cantFail(ExprSymbol.getAddress());
 
-  printf("%f\n", add(3, 4));
+  printf("%f\n", times_two(3));
 
   // Delete the anonymous expression module from the JIT.
   env->remove_module(handle);

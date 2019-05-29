@@ -7,7 +7,6 @@ default:
 	@cd $(BINDIR); cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_DIR=${PWD} ../; $(MAKE) -j --no-print-directory
 
 debug:
-	@printf "DEBUG\n"
 	@mkdir -p $(BINDIR)
 	@cd $(BINDIR); cmake -DCMAKE_BUILD_TYPE=Debug -DBUILD_DIR=${PWD} ../; $(MAKE) -j --no-print-directory
 
