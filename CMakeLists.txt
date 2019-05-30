@@ -49,7 +49,6 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 
 include(${CMAKE_SOURCE_DIR}/src/helion/CMakeLists.txt)
 
-
 target_compile_options(helion PRIVATE -Wall -Wextra -Wno-unused-parameter -Wno-strict-aliasing)
 
 

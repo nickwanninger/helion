@@ -208,6 +208,14 @@ namespace helion {
       NODE_FOOTER;
     };
 
+    class def : public node {
+      public:
+        text name;
+        rc<prototype> proto = nullptr;
+        std::vector<std::shared_ptr<ast::node>> exprs;
+        NODE_FOOTER;
+    };
+
 
     class if_node : public node {
       public:

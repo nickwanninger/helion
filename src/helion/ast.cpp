@@ -236,6 +236,31 @@ text ast::func::str(int depth) {
 }
 
 
+text ast::def::str(int depth) {
+  text indent = "";
+  for (int i = 0; i < depth; i++) indent += "  ";
+
+  text s;
+
+  s += "def ";
+  s += name;
+  s += " ";
+  if (proto != nullptr) {
+    s += proto->str();
+  }
+  s += "\n";
+  for (auto& e : exprs) {
+    s += indent;
+    s += "  ";
+    s += e->str(depth + 1);
+    s += "\n";
+  }
+  s += indent;
+  s += "end";
+  return s;
+}
+
+
 text ast::return_node::str(int depth) {
   text s;
   s += "return ";
@@ -269,10 +294,10 @@ text ast::if_node::str(int depth) {
     } else {
       s += "else\n";
     }
-    for (auto & e : c.body) {
+    for (auto& e : c.body) {
       s += indent;
       s += "  ";
-      s += e->str(depth+1);
+      s += e->str(depth + 1);
       s += "\n";
     }
   }

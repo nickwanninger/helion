@@ -26,6 +26,7 @@ ADD_PARSER(str);
 ADD_PARSER(keyword);
 ADD_PARSER(do);
 ADD_PARSER(nil);
+ADD_PARSER(def);
 
 static presult parse_expr(pstate, bool do_binary = true);
 static presult parse_binary_rhs(pstate s, int expr_prec, rc<ast::node> lhs);
@@ -55,7 +56,6 @@ ast::module *helion::parse_module(pstate s) {
   auto *module = new ast::module();
 
   while (true) {
-
     s = glob_term(s);
     if (s.first().type == tok_eof) break;
     // while we can, parse a statement
@@ -123,6 +123,7 @@ static presult parse_expr(pstate s, bool do_binary) {
   if (!res && begin.type == tok_return) TRY(parse_return(s));
   if (!res && begin.type == tok_nil) TRY(parse_nil(s));
   if (!res && begin.type == tok_if) TRY(parse_if(s));
+  if (!res && begin.type == tok_def) TRY(parse_def(s));
 
 parse_success:
   if (!res) {
@@ -639,12 +640,21 @@ static presult parse_prototype(pstate s) {
 
   auto proto = make<ast::prototype>();
 
-
   while (true) {
-    if ((expect_closing_paren && s.first().type == tok_right_paren) ||
-        s.first().type == tok_colon) {
+    puts("aaa", s.first());
+
+    if (s.first().type == tok_term) {
+      puts("here\n");
       break;
     }
+
+    if ((expect_closing_paren && s.first().type == tok_right_paren) ||
+        s.first().type == tok_colon || s.first().type == tok_term) {
+      puts("breaking");
+      break;
+    }
+
+
     rc<ast::type_node> atype = nullptr;
     auto tres = parse_type(s);
 
@@ -654,11 +664,8 @@ static presult parse_prototype(pstate s) {
       s = tres;
     }
 
-    // die(s.first());
-
     if (s.first().type != tok_var) {
       return pfail(s);
-      // throw syntax_error(s, "invalid argument name");
     }
 
     text name = s.first().val;
@@ -669,13 +676,25 @@ static presult parse_prototype(pstate s) {
 
     proto->args.push_back(a);
 
-    if (s.first().type != tok_comma && s.first().type != tok_right_paren) {
+    if (s.first().type != tok_comma && s.first().type != tok_right_paren &&
+        s.first().type != tok_term && s.first().type != tok_colon) {
       return pfail(s);
       throw syntax_error(s, "unexpected token");
     }
     if (s.first().type == tok_comma) s++;
   }
-  s++;
+
+  puts(s.first());
+
+  puts(proto->str());
+
+  if (expect_closing_paren) {
+    if (s.first().type != tok_right_paren) {
+      return pfail(s);
+    }
+    s++;
+  }
+
 
   if (s.first().type == tok_colon) {
     s++;
@@ -798,6 +817,64 @@ static presult parse_if(pstate s) {
   }
 
   n->set_bounds(start_token, s.first());
+  s++;
+
+
+  return presult(n, s);
+}
+
+
+
+
+static presult parse_def(pstate s) {
+  auto n = make<ast::def>();
+  auto start_token = s.first();
+
+  s++;
+  if (s.first().type == tok_var) {
+    n->name = s.first().val;
+  } else {
+    throw syntax_error(s, "invalid name for function");
+  }
+  s++;
+
+  if (s.first().type != tok_term) {
+    auto protor = parse_prototype(s);
+
+
+    if (!protor) {
+      throw syntax_error(s, "failed to parse def prototype");
+    }
+
+    n->proto = protor.as<ast::prototype>();
+    s = protor;
+  }
+
+  s = glob_term(s);
+
+
+  while (s.first().type != tok_end) {
+    rc<ast::node> expr;
+
+    s = glob_term(s);
+    if (s.first().type == tok_then) s++;
+    s = glob_term(s);
+
+    auto ntok = s.first().type;
+    while (ntok != tok_end) {
+      auto expr_res = parse_expr(s);
+
+      if (!expr_res) throw syntax_error(s, "expected expression");
+
+      s = expr_res;
+      n->exprs.push_back(expr_res);
+
+      s = glob_term(s);
+
+      ntok = s.first().type;
+    }
+    // n->expr.push_back(cond);
+  }
   s++;
 
 

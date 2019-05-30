@@ -21,6 +21,7 @@ add_executable(helion
 	src/helion/ast.cpp
 	src/helion/tokenizer.cpp
 	src/helion/net.cpp
+	src/helion/env.cpp
 	src/helion/gc.cpp
 	src/helion/parser.cpp
 	src/helion/main.cpp

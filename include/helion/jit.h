@@ -22,10 +22,10 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
-#include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/Vectorize.h"
 
 #include "llvm/Support/DynamicLibrary.h"
@@ -41,6 +41,7 @@
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 
+#include <functional>
 #include <vector>  // for std::vector
 
 #include <helion/types.h>
@@ -94,6 +95,10 @@ namespace helion {
         llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
       }
 
+
+      virtual ~isolate() {}
+
+
       inline TargetMachine &get_target_machine() { return *target_machine; }
 
       inline VModuleKey add_module(std::unique_ptr<Module> m) {
@@ -123,10 +128,6 @@ namespace helion {
 
 
      private:
-
-
-
-
       JITSymbol findMangledSymbol(const std::string &Name) {
         const bool ExportedSymbolsOnly = true;
 
@@ -164,7 +165,55 @@ namespace helion {
      * an enviroment is where higher level value concepts are stored, like
      * function->method mappings, modules, file caches, etc.
      */
-    class enviroment : public isolate {};
+    class enviroment : public isolate {
+      void *driver_library_handle = nullptr;
+
+     public:
+      ~enviroment();
+
+      // which file to enter at, always the last argument in argv
+      std::string entry_file;
+
+      bool verbose = false;
+      bool has_driver = false;
+
+      // where the driver is located on disk, if it is external
+      std::string driver_path;
+      // and options for the driver's init call
+      std::string driver_opts;
+
+      bool init(void);
+
+
+#define CHECK_ADDR(addr) assert((addr) & ((uint64_t)1ll << 63))
+
+
+      inline uint64_t remote_alloc(int size) {
+        return driver_alloc(size) | (1ll << 63);
+      }
+
+      inline int remote_free(uint64_t addr) {
+        CHECK_ADDR(addr);
+        return driver_free(addr & ~(1ll << 63));
+      }
+
+      inline int remote_read(uint64_t addr, int off, int len, void *dst) {
+        CHECK_ADDR(addr);
+        return driver_read(addr & ~(1ll << 63), off, len, dst);
+      }
+
+      inline int remote_write(uint64_t addr, int off, int len, void *src) {
+        CHECK_ADDR(addr);
+        return driver_write(addr & ~(1ll << 63), off, len, src);
+      }
+
+
+     private:
+      std::function<uint64_t(int)> driver_alloc;
+      std::function<int(uint64_t)> driver_free;
+      std::function<int(uint64_t, int, int, void *)> driver_read;
+      std::function<int(uint64_t, int, int, void *)> driver_write;
+    };
 
 
 
