@@ -9,7 +9,6 @@
 // do more of the allocation in-line.
 #include <fcntl.h>
 #include <gc/gc_allocator.h>
-#include <helion/gc.h>
 #include <helion/gcconfig.h>
 #include <pthread.h>
 #include <setjmp.h>

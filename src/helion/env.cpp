@@ -90,7 +90,6 @@ bool jit::enviroment::init(void) {
       memcpy(dst + off, src, len);
       return 1;
     };
-    
   }
 
 

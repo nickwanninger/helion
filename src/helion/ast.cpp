@@ -212,6 +212,8 @@ text ast::prototype::str(int) {
     if (arg.type != nullptr) {
       s += arg.type->str();
       s += " ";
+    } else {
+      s += "Auto ";
     }
     s += arg.name;
     if (i < args.size() - 1) {
@@ -220,9 +222,13 @@ text ast::prototype::str(int) {
   }
   s += ")";
 
+
+  s += " : ";
+
   if (return_type != nullptr) {
-    s += " : ";
     s += return_type->str();
+  } else {
+    s += "Auto";
   }
   return s;
 }

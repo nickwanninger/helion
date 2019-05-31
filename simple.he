@@ -1,6 +1,5 @@
-def square Int x : Int
-	if x < 0 then
-		return 0;
-	end
-	return x * x
+# add two values, x and y
+def add x, y
+	res = x = y = x + y
+	return x + y
 end
