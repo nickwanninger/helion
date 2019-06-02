@@ -35,6 +35,7 @@ static presult parse_function_args(pstate);
 static presult parse_function_literal(pstate);
 static presult parse_return(pstate);
 static presult parse_if(pstate);
+static presult parse_typedef(pstate);
 
 
 
@@ -124,6 +125,7 @@ static presult parse_expr(pstate s, bool do_binary) {
   if (!res && begin.type == tok_nil) TRY(parse_nil(s));
   if (!res && begin.type == tok_if) TRY(parse_if(s));
   if (!res && begin.type == tok_def) TRY(parse_def(s));
+  if (!res && begin.type == tok_typedef) TRY(parse_typedef(s));
 
 parse_success:
   if (!res) {
@@ -542,7 +544,6 @@ static presult parse_do(pstate s) {
     }
   }
   s++;
-
   return presult(block, s);
 }
 
@@ -639,7 +640,6 @@ static presult parse_prototype(pstate s) {
   auto proto = make<ast::prototype>();
 
   while (true) {
-
     if (s.first().type == tok_term) {
       break;
     }
@@ -863,8 +863,65 @@ static presult parse_def(pstate s) {
     }
     // n->expr.push_back(cond);
   }
+
+  n->set_bounds(start_token, s);
   s++;
-
-
   return presult(n, s);
 }
+
+
+static presult parse_typedef(pstate s) {
+  auto n = make<ast::typedef_node>();
+  auto start_state = s;
+
+
+  s++;
+
+  auto typer = parse_type(s);
+  if (!typer)
+    throw syntax_error(s, "Failed to parse type name in type definition");
+
+  s = typer;
+  n->type = typer.as<ast::type_node>();
+
+  if (s.first().type == tok_extends) {
+    s++;
+    auto extendsr = parse_type(s);
+    if (!extendsr)
+      throw syntax_error(
+          s, "Failed to parse type name in type definition's extend statement");
+    s = extendsr;
+    n->extends = extendsr.as<ast::type_node>();
+  }
+  s = glob_term(s);
+
+  while (s.first().type != tok_end) {
+    if (s.first().type == tok_type) {
+      auto typer = parse_type(s);
+      if (!typer)
+        throw syntax_error(s, "failed to parse field type in type definition");
+      s = typer;
+
+      if (s.first().type != tok_var)
+        throw syntax_error(s, "field name must be a variable name");
+      auto name = s.first().val;
+      s++;
+      n->fields.push_back({.type = typer.as<ast::type_node>(), .name = name});
+    } else if (s.first().type == tok_def) {
+
+      auto defr = parse_def(s);
+      if (!defr) throw syntax_error(s, "failed to parse method definition in type definition");
+      n->defs.push_back(defr.as<ast::def>());
+      s = defr;
+    } else {
+      // if you get here, there's an invalid token in the type def
+      throw syntax_error(s, "unexpected token in type definition");
+    }
+    s = glob_term(s);
+  }
+
+  n->set_bounds(start_state, s);
+  s++;  // skip the 'end' token
+  return presult(n, s);
+}
+

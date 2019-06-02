@@ -35,7 +35,6 @@ static std::unique_ptr<legacy::FunctionPassManager> fpm;
 static std::unique_ptr<legacy::PassManager> mpm;
 
 
-static std::unique_ptr<helion::jit::enviroment> env;
 
 
 extern "C" void GC_allow_register_threads();
@@ -54,38 +53,30 @@ int main(int argc, char **argv) {
   GC_allow_register_threads();
 
 
-  helion::init_codegen();
+  helion::init();
+
+
+
+  auto &A = datatype::create("A");
+  auto &B = datatype::create("B", A);
+
+
+  puts(A.str());
+  puts(B.str());
+
+  if (subtype(&A, &B)) {
+    puts("subtype");
+  }
 
   return 0;
 
-
-  /*
-
-  std::vector<std::string> args;
-  for (int i = 1; i < argc; i++) args.push_back(argv[i]);
-
-  // create the enviroment
-  auto env = std::make_unique<jit::enviroment>();
-
-  parse_args(env.get(), args);
-
-  // attempt to initialize the enviroment...
-  // ie: setup drivers, etc...
-  if (!env->init()) {
-    printf("failed to initialize enviroment\n");
-    return 1;
-  }
-  */
-
-
-
   // print every token from the file
-  std::string path = env->entry_file;
+  std::string path = argv[1];
   text src = read_file(path.c_str());
 
 
   try {
-    auto res = parse_module(src, env->entry_file);
+    auto res = parse_module(src, argv[1]);
     puts(res->str());
     delete res;
   } catch (syntax_error &e) {
@@ -100,7 +91,6 @@ int main(int argc, char **argv) {
 static auto usage(int status = 1) {
   puts("Usage: helion [<flags>] file");
   puts("Flags:");
-
   puts(" --driver, -D          Set the remote reference driver library");
   puts(" --opts, -O            Set the driver options (specified per-driver)");
   puts(" --help                Show this menu");

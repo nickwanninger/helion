@@ -19,9 +19,9 @@ namespace helion {
 
 
 
-#define NODE_FOOTER        \
- public:                   \
-  text str(int depth = 0); \
+#define NODE_FOOTER \
+ public:            \
+  text str(int depth = 0);
 
     // @abstract, all ast::nodes extend from this publically
     class node {
@@ -52,17 +52,6 @@ namespace helion {
 
 
     using node_ptr = rc<node>;
-
-    /**
-     * a module AST node is what comes from parsing any top level expression,
-     * string, or other representation. Technically, we parse a module per file
-     * in a module directory, then merge them together
-     */
-    class module : public node {
-     public:
-      std::vector<node_ptr> stmts;
-      NODE_FOOTER;
-    };
 
 
     class number : public node {
@@ -209,26 +198,57 @@ namespace helion {
     };
 
     class def : public node {
-      public:
-        text name;
-        rc<prototype> proto = nullptr;
-        std::vector<std::shared_ptr<ast::node>> exprs;
-        NODE_FOOTER;
+     public:
+      text name;
+      rc<prototype> proto = nullptr;
+      std::vector<std::shared_ptr<ast::node>> exprs;
+      NODE_FOOTER;
     };
 
 
     class if_node : public node {
-      public:
-        struct condition {
-          std::shared_ptr<ast::node> cond;
-          std::vector<std::shared_ptr<ast::node>> body;
-        };
+     public:
+      struct condition {
+        std::shared_ptr<ast::node> cond;
+        std::vector<std::shared_ptr<ast::node>> body;
+      };
 
-        bool has_default = false;
+      bool has_default = false;
 
-        std::vector<condition> conds;
-        NODE_FOOTER;
+      std::vector<condition> conds;
+      NODE_FOOTER;
     };
+
+
+
+    class typedef_node : public node {
+     public:
+      struct field_t {
+        std::shared_ptr<ast::type_node> type;
+        text name;
+      };
+      std::shared_ptr<type_node> type;
+      std::shared_ptr<type_node> extends;
+      std::vector<field_t> fields;
+      std::vector<std::shared_ptr<ast::def>> defs;
+      NODE_FOOTER;
+    };
+
+
+    /**
+     * a module AST node is what comes from parsing any top level expression,
+     * string, or other representation. Technically, we parse a module per file
+     * in a module directory, then merge them together
+     */
+    class module : public node {
+     public:
+      std::vector<std::shared_ptr<ast::typedef_node>> typedefs;
+      std::vector<std::shared_ptr<ast::def>> defs;
+      // stmts are top level expressions that will eventually be ran before main
+      std::vector<node_ptr> stmts;
+      NODE_FOOTER;
+    };
+
 
 
   }  // namespace ast

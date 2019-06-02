@@ -17,6 +17,7 @@ message(STATUS "LLVM_LIBS: ${LLVM_LIBS}")
 set(LLVM_LINK_LLVM_DYLIB on)
 
 add_executable(helion
+	src/helion/datatype.cpp
 	src/helion/text.cpp
 	src/helion/ast.cpp
 	src/helion/tokenizer.cpp

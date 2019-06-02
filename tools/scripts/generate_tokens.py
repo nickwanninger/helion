@@ -17,7 +17,8 @@ tokens = [
     "left_paren",
     "right_paren",
 
-    "class",
+    "typedef", # actually the 'type' symbol, but that's taken
+    "extends",
     "def",
     "term",
     "indent",

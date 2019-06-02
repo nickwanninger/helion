@@ -26,6 +26,8 @@ static llvm::Type *T_float32;
 static llvm::Type *T_float64;
 static llvm::Type *T_void;
 
+// what the internal representation of a method shall be
+static llvm::StructType *T_method_type;
 
 
 struct cgval {
@@ -42,6 +44,20 @@ struct cgval {
   //
   inline operator llvm::Value *() const { return v; }
   inline operator datatype *() const { return typ; }
+};
+
+
+
+class cg_ctx {
+ public:
+  llvm::IRBuilder<> builder;
+  llvm::Function *func = nullptr;
+  helion::module *module = nullptr;
+  // what method instance is this compiling?
+  method_instance *mi;
+  std::string func_name;
+  std::vector<cgval> args;
+  cg_ctx(llvm::LLVMContext &llvmctx) : builder(llvmctx) {}
 };
 
 
@@ -70,17 +86,15 @@ static llvm::Module *init_llvm(void) {
   m = new llvm::Module("helion", llvm_ctx);
   llvm::TargetOptions options = llvm::TargetOptions();
 
-  options.PrintMachineCode =
-      true;  // Print machine code produced during JIT compiling
-
+  options.PrintMachineCode = true;
 
   llvm::EngineBuilder eb((std::unique_ptr<llvm::Module>(engine_module)));
   std::string err_str;
   eb.setEngineKind(llvm::EngineKind::JIT)
       .setTargetOptions(options)
       // Generate simpler code for JIT
-      .setRelocationModel(llvm::Reloc::Static);
-
+      .setRelocationModel(llvm::Reloc::Static)
+      .setOptLevel(llvm::CodeGenOpt::Aggressive);
 
   // the target triple for the current machine
   llvm::Triple the_triple(llvm::sys::getProcessTriple());
@@ -101,9 +115,6 @@ static llvm::Module *init_llvm(void) {
 void helion::init_codegen(void) {
   llvm::Module *m = init_llvm();
   init_llvm_env(m);
-
-  cgval v;
-  v.v->print(llvm::errs());
 }
 
 

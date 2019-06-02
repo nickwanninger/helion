@@ -8,10 +8,6 @@
 using namespace helion;
 
 llvm::Type *helion::datatype_to_llvm(datatype *dt) {
-
-  if (dt->struct_decl != nullptr) return dt->struct_decl;
-
-
   return nullptr;
 
 }

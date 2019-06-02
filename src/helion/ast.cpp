@@ -267,6 +267,49 @@ text ast::def::str(int depth) {
 }
 
 
+text ast::typedef_node::str(int depth) {
+  text indent = "";
+  for (int i = 0; i < depth; i++) indent += "  ";
+
+  text s;
+  s += "type ";
+  s += type->str();
+  if (extends != nullptr) {
+    s += " extends ";
+    s += extends->str();
+  }
+  s += "\n";
+
+
+  s += indent;
+  s += "  ";
+  s += "# Fields\n";
+  for (auto & field : fields) {
+    s += indent;
+    s += "  ";
+    s += field.type->str();
+    s += " ";
+    s += field.name;
+    s += "\n";
+  }
+
+
+  s += indent;
+  s += "  ";
+  s += "# Methods\n";
+  for (auto & def : defs) {
+    s += indent;
+    s += "  ";
+    s += def->str(depth+1);
+    s += "\n";
+  }
+
+  s += indent;
+  s += "end";
+  return s;
+}
+
+
 text ast::return_node::str(int depth) {
   text s;
   s += "return ";

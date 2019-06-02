@@ -6,7 +6,6 @@
 #ifndef __HELION_CORE_JIT__
 #define __HELION_CORE_JIT__
 
-#include <helion/text.h>
 #include <memory>
 #include <vector>
 
@@ -49,6 +48,11 @@
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 
+
+
+#include <helion/ast.h>
+#include <helion/text.h>
+
 /*
  * this header file defines the core classes and data types used throughout the
  * helion compiler and jit runtime. For example, the module type, the basic type
@@ -64,24 +68,96 @@ namespace helion {
   struct datatype;
 
 
+  // a linkage to the 'Any' type
+  extern datatype *any_type;
+
   // a value is an opaque pointer to something garbage collected in the helion
   // jit runtime. It has no real meaning except as a better, typed replacement
   // for voidptr
   struct value;
 
-
-
   struct datatype_name {};
 
   struct datatype {
-    std::shared_ptr<datatype_name> name;
-    std::shared_ptr<datatype> super = nullptr;
-    // a list of type parameters. ie: Vector<Int>
-    std::vector<std::shared_ptr<datatype>> parameters;
+    // a type can have multiple 'styles'. For example, Int32 has the style of
+    // INTEGER, and thne has a size of 32. This is helpful when lowering to
+    // llvm::Type
+    enum class type_style : unsigned char {
+      OBJECT,    // normal reference type
+      INTEGER,   // is an n bit integer
+      FLOATING,  // is an n bit floating point number
+      UNION,     // is a union of the parameters
+      TUPLE,
+      METHOD,  // first parameter is
+    };
 
-    std::vector<text> names;
-    llvm::Type *struct_decl = nullptr;  // declaration of the struct in LLVM
+    type_style style = type_style::OBJECT;
+    std::string name;
+
+    // the type id
+    int tid = -1;
+    // how many bits this type is in memory (for primitive types)
+    int bits;
+
+    // the super type of this type. Defaults to any_type
+    datatype &super;
+    // a list of type parameters. ie: Vector<Int>
+    std::vector<datatype *> parameters;
+
+    // declaration of the type in LLVM as an llvm::Type
+    llvm::Type *type_decl = nullptr;
+
+    static datatype &create(std::string, datatype & = *any_type,
+                            std::vector<datatype *> = {});
+    static inline datatype &create(std::string n, std::vector<datatype *> p) {
+      return datatype::create(n, *any_type, p);
+    };
+
+
+    text str(void);
+
+   private:
+    inline datatype(std::string name, datatype &s) : name(name), super(s) {}
   };
+
+
+
+
+  // check if two types are
+  bool subtype(datatype *A, datatype *B);
+
+  struct method_sig {
+    datatype *return_type;
+  };
+
+  class method_instance;
+
+  class method {
+   public:
+    std::string name;
+    std::string file;
+    std::shared_ptr<ast::node> src;
+    // table of all method_instance specializations that we've compiled
+    std::vector<method_instance *> specializations;
+  };
+
+  class method_instance {
+   public:
+    // what method is this an instance of?
+    method *of;
+  };
+
+  // This type represents an executable operation
+  struct code_instance {
+    // the defining method instance
+    method_instance *def;
+    llvm::Function *llvm_func;
+
+    datatype *return_type;
+    std::vector<datatype *> arg_types;
+  };
+
+
 
 
   using RTDyldObjHandleT = llvm::orc::VModuleKey;
@@ -126,6 +202,7 @@ namespace helion {
 
     const llvm::DataLayout &getDataLayout() const;
     const llvm::Triple &getTargetTriple() const;
+
    private:
     /*
     std::string getMangledName(const std::string &Name);
@@ -170,17 +247,18 @@ namespace helion {
   };
 
 
-
-  class codectx {
-   public:
-    llvm::IRBuilder<> builder;
-    llvm::Function *func = nullptr;
-  };
-
-
   llvm::Type *datatype_to_llvm(datatype *);
 
+
+
+  void init_types(void);
   void init_codegen(void);
+
+
+  inline void init() {
+    init_types();
+    init_codegen();
+  }
 
 };  // namespace helion
 
