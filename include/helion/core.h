@@ -185,13 +185,10 @@ namespace helion {
     ojit_ee(llvm::TargetMachine &TM);
 
     /*
-    void addGlobalMapping(StringRef Name, uint64_t Addr);
-    void addGlobalMapping(const GlobalValue *GV, void *Addr);
     void *getPointerToGlobalIfAvailable(StringRef S);
     void *getPointerToGlobalIfAvailable(const GlobalValue *GV);
     void addModule(std::unique_ptr<Module> M);
     void removeModule(ModuleHandleT H);
-    JL_JITSymbol findSymbol(const std::string &Name, bool ExportedSymbolsOnly);
     JL_JITSymbol findUnmangledSymbol(const std::string Name);
     JL_JITSymbol resolveSymbol(const std::string &Name);
     uint64_t getGlobalValueAddress(const std::string &Name);
@@ -199,6 +196,16 @@ namespace helion {
     Function *FindFunctionNamed(const std::string &Name);
     */
 
+
+    void add_global_mapping(llvm::StringRef, uint64_t);
+
+
+    llvm::JITSymbol find_symbol(const std::string &Name,
+                                bool ExportedSymbolsOnly = false);
+
+
+    void add_module(std::unique_ptr<llvm::Module> M);
+    void remove_module(ModuleHandleT H);
 
     const llvm::DataLayout &getDataLayout() const;
     const llvm::Triple &getTargetTriple() const;
@@ -223,9 +230,6 @@ namespace helion {
     SymbolTableT GlobalSymbolTable;
     SymbolTableT LocalSymbolTable;
   };
-
-
-
 
   extern ojit_ee *execution_engine;
 

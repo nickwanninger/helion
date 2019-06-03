@@ -11,16 +11,22 @@
 #include <vector>
 
 namespace helion {
+
+  class scope;
+
   /**
    * the ast represents the code at a more abstract level, and it
    * is produced by <helion/parser.h>.
    */
+
+
   namespace ast {
 
 
 
 #define NODE_FOOTER \
  public:            \
+  using node::node; \
   text str(int depth = 0);
 
     // @abstract, all ast::nodes extend from this publically
@@ -29,7 +35,10 @@ namespace helion {
       token start;
       token end;
 
+      scope *scp;
+
      public:
+      node(scope *s) { scp = s; }
       virtual ~node() {}
       inline void set_bounds(token s, token e) {
         start = s;
@@ -95,9 +104,20 @@ namespace helion {
       NODE_FOOTER;
     };
 
+
+    class var_decl : public node {
+     public:
+      text name;
+      std::shared_ptr<ast::node> value;
+      NODE_FOOTER;
+    };
+
+
     class var : public node {
      public:
-      text value;
+      bool global = false;
+      text global_name;
+      std::shared_ptr<var_decl> decl;
       NODE_FOOTER;
     };
 
@@ -238,15 +258,23 @@ namespace helion {
     /**
      * a module AST node is what comes from parsing any top level expression,
      * string, or other representation. Technically, we parse a module per file
-     * in a module directory, then merge them together
+     * in a module directory, then merge them together.
+     *
+     * Implemented in parser.cpp
      */
-    class module : public node {
+    class module {
+     private:
+      std::unique_ptr<scope> m_scope;
+
      public:
+      module();
       std::vector<std::shared_ptr<ast::typedef_node>> typedefs;
       std::vector<std::shared_ptr<ast::def>> defs;
       // stmts are top level expressions that will eventually be ran before main
-      std::vector<node_ptr> stmts;
-      NODE_FOOTER;
+      std::vector<std::shared_ptr<ast::node>> stmts;
+
+      scope *get_scope(void);
+      text str(int = 0);
     };
 
 

@@ -87,7 +87,16 @@ text ast::subscript::str(int) {
 }
 
 
-text ast::var::str(int) { return value; }
+text ast::var_decl::str(int d) {
+  text s;
+  s += name;
+  s += " = ";
+  s += value->str(d+1);
+  return s;
+}
+
+text ast::var::str(int) { return global ? global_name : decl->name; }
+
 
 
 text ast::call::str(int) {
@@ -179,7 +188,7 @@ text ast::type_node::str(int) {
     s += name;
 
     if (params.size() > 0) {
-      s += "<";
+      s += "{";
 
       for (size_t i = 0; i < params.size(); i++) {
         auto& param = params[i];
@@ -188,7 +197,7 @@ text ast::type_node::str(int) {
           s += ", ";
         }
       }
-      s += ">";
+      s += "}";
     }
     return s;
   }

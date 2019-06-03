@@ -113,8 +113,8 @@ namespace helion {
    * publically exposed by the ast:: API. All parser functions are implemented
    * inside `src/helion/parser.cpp` as static functions
    */
-  ast::module* parse_module(pstate);
-  ast::module* parse_module(text, text);
+  std::unique_ptr<ast::module> parse_module(pstate);
+  std::unique_ptr<ast::module> parse_module(text, text);
 
 
 

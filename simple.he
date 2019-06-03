@@ -5,17 +5,17 @@ def add x, y
 end
 
 
-type Foo
-	Int x
-	String y
-	def to_s
-		return 'Foo'
-	end
-end
-
-type Bar extends Foo
-	Int z
-	def to_s
-		return 'Bar'
-	end
-end
+# type Foo
+# 	Int x
+# 	String y
+# 	def to_s
+# 		return 'Foo'
+# 	end
+# end
+#
+# type Bar extends Foo
+# 	Int z
+# 	def to_s
+# 		return 'Bar'
+# 	end
+# end

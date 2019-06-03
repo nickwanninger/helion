@@ -3,6 +3,7 @@
 
 #include <helion/core.h>
 #include <iostream>
+#include <unordered_map>
 
 using namespace helion;
 
@@ -27,7 +28,7 @@ static llvm::Type *T_float64;
 static llvm::Type *T_void;
 
 // what the internal representation of a method shall be
-static llvm::StructType *T_method_type;
+// static llvm::StructType *T_method_type;
 
 
 struct cgval {
@@ -48,17 +49,6 @@ struct cgval {
 
 
 
-class cg_ctx {
- public:
-  llvm::IRBuilder<> builder;
-  llvm::Function *func = nullptr;
-  helion::module *module = nullptr;
-  // what method instance is this compiling?
-  method_instance *mi;
-  std::string func_name;
-  std::vector<cgval> args;
-  cg_ctx(llvm::LLVMContext &llvmctx) : builder(llvmctx) {}
-};
 
 
 
@@ -126,4 +116,68 @@ static void init_llvm_env(llvm::Module *m) {
   T_float32 = llvm::Type::getFloatTy(llvm_ctx);
   T_float64 = llvm::Type::getDoubleTy(llvm_ctx);
   T_void = llvm::Type::getVoidTy(llvm_ctx);
+}
+
+
+std::unordered_map<std::string, llvm::Module *> module_for_fname;
+
+
+// this takes ownership of a module after code emission is complete
+// and will add it to the execution engine when required (by
+// jl_finalize_function)
+static void finalize_module(llvm::Module *m, bool shadow) {
+  // record the function names that are part of this Module
+  // so it can be added to the JIT when needed
+  // for (llvm::Function *F : m) {}
+
+
+  for (llvm::Module::iterator I = m->begin(), E = m->end(); I != E; ++I) {
+    llvm::Function *F = &*I;
+    if (!F->isDeclaration()) {
+      /*
+      bool known = incomplete_fname.erase(F->getName());
+      (void)known;  // TODO: assert(known); // llvmcall gets this wrong
+      */
+      module_for_fname[F->getName()] = m;
+    }
+  }
+  // in the newer JITs, the shadow module is separate from the execution module
+  // if (shadow) jl_add_to_shadow(m);
+}
+
+
+
+
+/**
+ * Represents the context for a single method compilation
+ */
+class cg_ctx {
+ public:
+  llvm::IRBuilder<> builder;
+  llvm::Function *func = nullptr;
+  helion::module *module = nullptr;
+  // what method instance is this compiling?
+  method_instance *linfo;
+  std::string func_name;
+  std::vector<cgval> args;
+  cg_ctx(llvm::LLVMContext &llvmctx) : builder(llvmctx) {}
+};
+
+
+
+
+// main entry point to the compiler. All code must be generated into a function, so
+// this function must compile a method instance.
+static std::unique_ptr<llvm::Module> emit_function(method_instance *lam) {
+  std::unique_ptr<llvm::Module> m;
+
+
+
+  // step 1. Build code context for the compilation of this method
+  cg_ctx ctx(llvm_ctx);
+  ctx.linfo = lam;
+
+  ctx.func_name = lam->of->name;
+
+  return m;
 }

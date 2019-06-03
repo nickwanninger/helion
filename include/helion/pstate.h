@@ -6,11 +6,11 @@
 #ifndef __PSTATE_H__
 #define __PSTATE_H__
 
+#include <helion/core.h>
 #include <helion/tokenizer.h>
 #include <helion/util.h>
 #include <memory>
 #include <unordered_map>
-#include <helion/core.h>
 
 namespace helion {
 
@@ -20,19 +20,18 @@ namespace helion {
   };
 
   class scope {
-
    public:
     inline scope() { m_parent = nullptr; }
 
-    inline scope &spawn() {
+    inline scope *spawn() {
       auto ns = std::make_unique<scope>();
       ns->m_parent = this;
       scope *ptr = ns.get();
       children.push_back(std::move(ns));
-      return *ptr;
+      return ptr;
     }
 
-    inline std::shared_ptr<ast::node>& find(std::string &name) {
+    inline std::shared_ptr<ast::var_decl> find(std::string &name) {
       // do a tree walking search, as variables can only be found in the current
       // scope and any scopes above it.
       if (m_vars.count(name) != 0) {
@@ -41,10 +40,12 @@ namespace helion {
       if (m_parent != nullptr) {
         return m_parent->find(name);
       }
-      throw std::logic_error(strfmt("variable %s not bound", name.c_str()).c_str());
+
+      // not found
+      return nullptr;
     }
 
-    inline void bind(std::string &name, std::shared_ptr<ast::node>& node) {
+    inline void bind(std::string &name, std::shared_ptr<ast::var_decl> &node) {
       // very simple...
       m_vars[name] = node;
     }
@@ -53,18 +54,20 @@ namespace helion {
    protected:
     scope *m_parent = nullptr;
     std::vector<std::unique_ptr<scope>> children;
-    std::unordered_map<std::string, std::shared_ptr<ast::node>> m_vars;
+    std::unordered_map<std::string, std::shared_ptr<ast::var_decl>> m_vars;
   };
+
+
 
   class pstate {
     int ind = 0;
-    std::shared_ptr<tokenizer> tokn;
+    std::shared_ptr<tokenizer> tokn = nullptr;
 
    public:
-    inline pstate() {
-      ind = 0;
-      tokn = nullptr;
-    }
+    scope *sc = nullptr;
+
+
+    inline pstate() {}
     inline pstate(std::shared_ptr<tokenizer> t, int i = 0) {
       ind = i;
       tokn = t;
@@ -87,7 +90,11 @@ namespace helion {
         return eof;
       }
     }
-    inline pstate next(void) { return pstate(tokn, ind + 1); }
+    inline pstate next(void) {
+      auto p = pstate(tokn, ind + 1);
+      p.sc = sc;
+      return p;
+    }
     inline bool done(void) { return first().type == tok_eof; }
 
     inline operator bool(void) { return !done(); }

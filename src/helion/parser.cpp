@@ -11,6 +11,21 @@
 using namespace helion;
 
 
+
+
+
+
+
+
+ast::module::module() {
+  m_scope = std::make_unique<scope>();
+}
+
+scope *ast::module::get_scope(void) {
+  return m_scope.get();
+}
+
+
 /**
  * This file is the implementation of <helion/parser.h> and is where the bulk
  * of the parsing logic lives. It's a hand-written recursive decent parser that
@@ -53,10 +68,17 @@ static auto glob_term(pstate s) {
 /**
  * primary parse function, ideally called per-file
  */
-ast::module *helion::parse_module(pstate s) {
-  auto *module = new ast::module();
+std::unique_ptr<ast::module> helion::parse_module(pstate s) {
+
+  auto mod = std::make_unique<ast::module>();
 
   while (true) {
+
+
+    // every time a top level expr is parsed, the scope
+    // is reset to the top level scope
+    s.sc = mod->get_scope();
+
     s = glob_term(s);
     if (s.first().type == tok_eof) break;
     // while we can, parse a statement
@@ -65,7 +87,7 @@ ast::module *helion::parse_module(pstate s) {
       // after the end of the last parse_expr
       s = r.state;
       for (auto v : r.vals) {
-        module->stmts.push_back(v);
+        mod->stmts.push_back(v);
       }
 
       // bool found = false;
@@ -85,14 +107,14 @@ ast::module *helion::parse_module(pstate s) {
     }
   }
 
-  return module;
+  return mod;
 }
 
 
 /**
  * wrapper that creates a state around text
  */
-ast::module *helion::parse_module(text s, text pth) {
+std::unique_ptr<ast::module> helion::parse_module(text s, text pth) {
   auto t = make<tokenizer>(s, pth);
   pstate state(t, 0);
   return parse_module(state);
@@ -161,7 +183,7 @@ static presult expand_expression(presult r) {
       t = s;
       if (t.type == tok_var) {
         s++;
-        auto v = make<ast::dot>();
+        auto v = make<ast::dot>(s.sc);
         v->set_bounds(start_token, t);
         v->expr = expr;
         v->sub = t.val;
@@ -179,7 +201,7 @@ static presult expand_expression(presult r) {
         throw syntax_error(initial_state, "malformed function call");
       }
 
-      auto c = make<ast::call>();
+      auto c = make<ast::call>(s.sc);
       c->set_bounds(start_token, t);
       c->func = expr;
       c->args = res.vals;
@@ -191,7 +213,7 @@ static presult expand_expression(presult r) {
 
 
     if (t.type == tok_left_square) {
-      auto sub = make<ast::subscript>();
+      auto sub = make<ast::subscript>(s.sc);
       sub->expr = expr;
       s++;
       t = s;
@@ -255,7 +277,7 @@ static presult expand_expression(presult r) {
     }
   }
 
-  auto call = make<ast::call>();
+  auto call = make<ast::call>(s.sc);
   call->func = expr;
   call->args = args;
 
@@ -264,8 +286,18 @@ static presult expand_expression(presult r) {
 
 
 static presult parse_var(pstate s) {
-  auto v = make<ast::var>();
-  v->value = s.first().val;
+  auto v = make<ast::var>(s.sc);
+
+  std::string name = s.first().val;
+  auto found = s.sc->find(name);
+
+  if (found == nullptr) {
+    v->global = true;
+    v->global_name = name;
+  } else {
+    v->decl = found;
+  }
+
   return presult(v, s.next());
 }
 
@@ -274,7 +306,7 @@ static presult parse_var(pstate s) {
 static presult parse_num(pstate s) {
   token t = s;
   std::string src = t.val;
-  auto node = make<ast::number>();
+  auto node = make<ast::number>(s.sc);
   node->set_bounds(t, t);
 
   // determine if the token is a float or not
@@ -303,7 +335,7 @@ static presult parse_num(pstate s) {
 
 
 static presult parse_str(pstate s) {
-  auto n = make<ast::string>();
+  auto n = make<ast::string>(s.sc);
   n->val = s.first().val;
   s++;
   return presult(n, s);
@@ -311,7 +343,7 @@ static presult parse_str(pstate s) {
 
 
 static presult parse_keyword(pstate s) {
-  auto n = make<ast::keyword>();
+  auto n = make<ast::keyword>(s.sc);
   n->val = s.first().val;
   s++;
   return presult(n, s);
@@ -320,7 +352,7 @@ static presult parse_keyword(pstate s) {
 
 
 static presult parse_nil(pstate s) {
-  auto n = make<ast::nil>();
+  auto n = make<ast::nil>(s.sc);
   s++;
   return presult(n, s);
 }
@@ -368,7 +400,7 @@ static presult parse_paren(pstate s) {
 
   rc<ast::node> n = nullptr;
   if (tuple) {
-    auto tup = make<ast::tuple>();
+    auto tup = make<ast::tuple>(s.sc);
     tup->vals = exprs;
     n = tup;
   } else {
@@ -425,6 +457,10 @@ static presult parse_function_args(pstate s) {
  * One of the more complicated parsing functions. Basically turns the flat
  * representation of tokens into a tree based on the `parser_op_prec` map
  * as a precedence table
+ *
+ * It also detects assignment and if the lhs is a var, looks up the variable in
+ * the scope. If it is not found, it must be a declaration so the function returns
+ * a declaration
  */
 static presult parse_binary_rhs(pstate s, int expr_prec, rc<ast::node> lhs) {
   static const auto parser_op_prec = std::map<std::string, int>({
@@ -494,7 +530,7 @@ static presult parse_binary_rhs(pstate s, int expr_prec, rc<ast::node> lhs) {
 
     token end = s;
 
-    auto n = make<ast::binary_op>();
+    auto n = make<ast::binary_op>(s.sc);
 
     n->set_bounds(tok, end);
 
@@ -526,7 +562,7 @@ static presult parse_binary_rhs(pstate s, int expr_prec, rc<ast::node> lhs) {
 static presult parse_do(pstate s) {
   // skip over the tok_do...
   s++;
-  auto block = make<ast::do_block>();
+  auto block = make<ast::do_block>(s.sc);
 
   while (true) {
     s = glob_term(s);
@@ -555,14 +591,14 @@ static presult parse_do(pstate s) {
 static presult parse_type(pstate s) {
   // base case, actual type parsing
   if (s.first().type == tok_type) {
-    auto type = make<ast::type_node>();
+    auto type = make<ast::type_node>(s.sc);
     type->name = s.first().val;
 
 
     s++;
 
-    auto open = tok_lt;
-    auto close = tok_gt;
+    auto open = tok_left_curly;
+    auto close = tok_right_curly;
 
     if (s.first().type == open) {
       // skip the open token
@@ -608,7 +644,7 @@ static presult parse_type(pstate s) {
 
     s++;
 
-    auto type = make<ast::type_node>();
+    auto type = make<ast::type_node>(s.sc);
     type->name = "Slice";
     type->type = ast::type_node::type_node_type::SLICE_TYPE;
     type->params.push_back(tr.as<ast::type_node>());
@@ -637,7 +673,7 @@ static presult parse_prototype(pstate s) {
   if (expect_closing_paren) s++;
 
 
-  auto proto = make<ast::prototype>();
+  auto proto = make<ast::prototype>(s.sc);
 
   while (true) {
     if (s.first().type == tok_term) {
@@ -736,7 +772,7 @@ static presult parse_function_literal(pstate s) {
   s = expr;
 
 
-  auto fn = make<ast::func>();
+  auto fn = make<ast::func>(s.sc);
 
   fn->proto = proto;
   fn->body = expr;
@@ -748,7 +784,7 @@ static presult parse_function_literal(pstate s) {
 static presult parse_return(pstate s) {
   s++;
 
-  auto ret = make<ast::return_node>();
+  auto ret = make<ast::return_node>(s.sc);
 
   if (s.first().type == tok_term) {
     return presult(ret, s);
@@ -771,7 +807,7 @@ static presult parse_if(pstate s) {
   // though the `else` block is handled differently, and has
   // no cond
   std::vector<ast::if_node::condition> conds;
-  auto n = make<ast::if_node>();
+  auto n = make<ast::if_node>(s.sc);
   auto start_token = s.first();
 
   while (s.first().type != tok_end) {
@@ -818,7 +854,7 @@ static presult parse_if(pstate s) {
 
 
 static presult parse_def(pstate s) {
-  auto n = make<ast::def>();
+  auto n = make<ast::def>(s.sc);
   auto start_token = s.first();
 
   s++;
@@ -871,7 +907,7 @@ static presult parse_def(pstate s) {
 
 
 static presult parse_typedef(pstate s) {
-  auto n = make<ast::typedef_node>();
+  auto n = make<ast::typedef_node>(s.sc);
   auto start_state = s;
 
 
