@@ -70,6 +70,11 @@ namespace helion {
 
   // a linkage to the 'Any' type
   extern datatype *any_type;
+  // a linkage to the basic int type
+  extern datatype *int32_type;
+  // a linkage to the basic float type
+  extern datatype *float32_type;
+
 
   // a value is an opaque pointer to something garbage collected in the helion
   // jit runtime. It has no real meaning except as a better, typed replacement
@@ -78,7 +83,9 @@ namespace helion {
 
   struct datatype_name {};
 
-  struct datatype {
+
+
+  struct typeinfo {
     // a type can have multiple 'styles'. For example, Int32 has the style of
     // INTEGER, and thne has a size of 32. This is helpful when lowering to
     // llvm::Type
@@ -90,34 +97,67 @@ namespace helion {
       TUPLE,
       METHOD,  // first parameter is
     };
+    struct field {
+      datatype *type;
+      std::string name;
+    };
+
+    std::shared_ptr<ast::type_node> node;
 
     type_style style = type_style::OBJECT;
     std::string name;
 
-    // the type id
-    int tid = -1;
     // how many bits this type is in memory (for primitive types)
     int bits;
 
-    // the super type of this type. Defaults to any_type
-    datatype &super;
-    // a list of type parameters. ie: Vector<Int>
-    std::vector<datatype *> parameters;
+    // a type is specialized iff it's parameters are filled in correctly
+    bool specialized = false;
 
+    // the super type of this type. Defaults to any_type
+    datatype *super;
+
+    std::vector<std::string> param_names;
+    std::vector<field> fields;
+
+    std::vector<std::unique_ptr<datatype>> specializations;
+  };
+
+  struct datatype {
+    std::shared_ptr<typeinfo> ti;
+
+    bool specialized = true;
+    // a list of type parameters. ie: Vector<Int>
+    std::vector<datatype *> param_types;
     // declaration of the type in LLVM as an llvm::Type
     llvm::Type *type_decl = nullptr;
 
     static datatype &create(std::string, datatype & = *any_type,
-                            std::vector<datatype *> = {});
-    static inline datatype &create(std::string n, std::vector<datatype *> p) {
+                            std::vector<std::string> = {});
+    static inline datatype &create(std::string n, std::vector<std::string> p) {
       return datatype::create(n, *any_type, p);
     };
 
+    static datatype &create_integer(std::string, int);
+    static datatype &create_float(std::string, int);
+
+    void add_field(std::string, datatype *);
+    datatype *specialize(std::vector<datatype *>);
+
+    llvm::Type *to_llvm(void);
 
     text str(void);
 
    private:
-    inline datatype(std::string name, datatype &s) : name(name), super(s) {}
+    inline datatype(std::string name, datatype &s) {
+      ti = std::make_shared<typeinfo>();
+      ti->name = name;
+      ti->super = &s;
+    }
+
+    inline datatype(datatype &other) {
+      ti = other.ti;
+      specialized = other.specialized;
+    }
   };
 
 
@@ -196,7 +236,6 @@ namespace helion {
     Function *FindFunctionNamed(const std::string &Name);
     */
 
-
     void add_global_mapping(llvm::StringRef, uint64_t);
 
 
@@ -241,12 +280,11 @@ namespace helion {
     value *data;
   };
 
-
-
   class module {
    public:
     module *parent = nullptr;
     text name;
+    std::map<std::string, datatype *> types;
     std::map<std::string, binding *> bindings;
   };
 

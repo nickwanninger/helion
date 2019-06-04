@@ -10,9 +10,21 @@
 #include <helion/util.h>
 #include <vector>
 
+
+namespace llvm {
+  class Value;
+};
+
 namespace helion {
 
   class scope;
+
+  class cg_ctx;
+  class cg_scope;
+  class cg_options;
+
+
+
 
   /**
    * the ast represents the code at a more abstract level, and it
@@ -24,9 +36,10 @@ namespace helion {
 
 
 
-#define NODE_FOOTER \
- public:            \
-  using node::node; \
+#define NODE_FOOTER                                         \
+ public:                                                    \
+  using node::node;                                         \
+  llvm::Value *codegen(cg_ctx &, cg_scope *, cg_options *); \
   text str(int depth = 0);
 
     // @abstract, all ast::nodes extend from this publically
@@ -35,9 +48,10 @@ namespace helion {
       token start;
       token end;
 
-      scope *scp;
 
      public:
+      scope *scp;
+
       node(scope *s) { scp = s; }
       virtual ~node() {}
       inline void set_bounds(token s, token e) {
@@ -105,21 +119,6 @@ namespace helion {
     };
 
 
-    class var_decl : public node {
-     public:
-      text name;
-      std::shared_ptr<ast::node> value;
-      NODE_FOOTER;
-    };
-
-
-    class var : public node {
-     public:
-      bool global = false;
-      text global_name;
-      std::shared_ptr<var_decl> decl;
-      NODE_FOOTER;
-    };
 
     class call : public node {
      public:
@@ -182,6 +181,9 @@ namespace helion {
         SLICE_TYPE,     // slice types, so [T] where T is another type
       };
 
+      bool constant = false;
+      bool known = true;
+
       text name;
 
       type_node_type type = NORMAL_TYPE;
@@ -191,37 +193,59 @@ namespace helion {
       NODE_FOOTER;
     };
 
+
+
+
+    class var_decl : public node {
+     public:
+      var_decl(scope *s);
+
+      int ind = 0;
+      bool is_arg = false;
+      std::shared_ptr<type_node> type;
+      text name;
+      std::shared_ptr<ast::node> value;
+      text str(int = 0);
+      llvm::Value *codegen(cg_ctx &, cg_scope *, cg_options *);
+    };
+
+
+    class var : public node {
+     public:
+      bool global = false;
+      text global_name;
+      std::shared_ptr<var_decl> decl;
+      NODE_FOOTER;
+    };
+
     // represents the prototype of a function. Types can be derived from this
     class prototype : public node {
      public:
-      // represents a typed argument
-      struct argument {
-        // a pointer to the type of the argument. null here means it's unknown
-        // and must be inferred
-        rc<type_node> type = nullptr;
-        // the name of the argument is simply a string
-        text name;
-      };
-
-      std::vector<argument> args;
+      std::vector<std::shared_ptr<var_decl>> args;
 
       rc<type_node> return_type;
 
       NODE_FOOTER;
     };
 
+
+    // represents function info. Basically, a common representation
+    // of escaping variables, closed variables, prototypes, etc..
     class func : public node {
      public:
-      rc<prototype> proto = nullptr;
-      node_ptr body;
+      // a vector of the variables which this function captures
+      std::vector<std::shared_ptr<ast::var_decl>> caputures;
+      std::shared_ptr<prototype> proto = nullptr;
+      std::vector<std::shared_ptr<ast::node>> stmts;
+
+      bool anonymous = false;
       NODE_FOOTER;
     };
 
     class def : public node {
      public:
       text name;
-      rc<prototype> proto = nullptr;
-      std::vector<std::shared_ptr<ast::node>> exprs;
+      std::shared_ptr<func> fn;
       NODE_FOOTER;
     };
 
@@ -251,6 +275,14 @@ namespace helion {
       std::shared_ptr<type_node> extends;
       std::vector<field_t> fields;
       std::vector<std::shared_ptr<ast::def>> defs;
+      NODE_FOOTER;
+    };
+
+
+    class typeassert : public node {
+     public:
+      std::shared_ptr<ast::node> val;
+      std::shared_ptr<ast::type_node> type;
       NODE_FOOTER;
     };
 

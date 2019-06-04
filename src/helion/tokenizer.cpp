@@ -479,11 +479,12 @@ top:
 
 
   static std::map<std::string, uint8_t> special_token_type_map = {
-      {"::", tok_is_type},    {"def", tok_def},      {"or", tok_or},
-      {"and", tok_and},       {"not", tok_not},      {"do", tok_do},
-      {"if", tok_if},         {"then", tok_then},    {"else", tok_else},
-      {"elif", tok_elif},     {"for", tok_for},      {"while", tok_while},
-      {"return", tok_return}, {"type", tok_typedef}, {"end", tok_end}, {"extends", tok_extends},
+      {"::", tok_is_type},   {"def", tok_def},     {"or", tok_or},
+      {"let", tok_let},      {"const", tok_const}, {"and", tok_and},
+      {"not", tok_not},      {"do", tok_do},       {"if", tok_if},
+      {"then", tok_then},    {"else", tok_else},   {"elif", tok_elif},
+      {"for", tok_for},      {"while", tok_while}, {"return", tok_return},
+      {"type", tok_typedef}, {"end", tok_end},     {"extends", tok_extends},
       {"nil", tok_nil}};
   if (special_token_type_map.count(symbol) != 0) {
     type = special_token_type_map[symbol];

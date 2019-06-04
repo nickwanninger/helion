@@ -11,6 +11,8 @@ using namespace helion;
 // It must be asserted that the supertype is never null, and in
 // a situation that it would be, it should be any instead
 datatype *helion::any_type;
+datatype *helion::int32_type;
+datatype *helion::float32_type;
 
 
 static std::vector<std::unique_ptr<datatype>> types;
@@ -20,6 +22,8 @@ static std::vector<std::unique_ptr<datatype>> types;
 void helion::init_types(void) {
   // the base Any type has Any as a supertype (recursively)
   any_type = &datatype::create("Any");
+  int32_type = &datatype::create_integer("Int", 32);
+  float32_type = &datatype::create_float("Float", 32);
 }
 
 // line for line implementation of the subtype algorithm from the julia paper.
@@ -27,26 +31,29 @@ void helion::init_types(void) {
 //
 // Check if A is <= B (A is a subtype or equal to B)
 bool helion::subtype(datatype *A, datatype *B) {
-  using ts = datatype::type_style;
+  using ts = typeinfo::type_style;
 
 
-  if (A->style != B->style) return false;
+  if (!A->specialized || !B->specialized) throw std::logic_error("unable to check subtype of unspecialized types");
 
-  if (A->style == ts::INTEGER || A->style == ts::FLOATING) {
-    return A->bits <= B->bits;
+
+  if (A->ti->style != B->ti->style) return false;
+
+  if (A->ti->style == ts::INTEGER || A->ti->style == ts::FLOATING) {
+    return A->ti->bits <= B->ti->bits;
   }
 
 
 
-  if (A->style == ts::TUPLE) {
-    if (A->parameters.size() != B->parameters.size()) {
+  if (A->ti->style == ts::TUPLE) {
+    if (A->param_types.size() != B->param_types.size()) {
       return false;
     }
 
     // all of the parameter types must be subtypes
-    for (size_t i = 0; i < A->parameters.size(); i++) {
-      auto &T = A->parameters[i];
-      auto &S = B->parameters[i];
+    for (size_t i = 0; i < A->param_types.size(); i++) {
+      auto &T = A->param_types[i];
+      auto &S = B->param_types[i];
       // if T is not a subtype of S, then A isn't a subtype of B
       if (subtype(T, S) == false) {
         return false;
@@ -55,9 +62,9 @@ bool helion::subtype(datatype *A, datatype *B) {
     return true;
   }
 
-  if (A->style == ts::OBJECT) {
+  if (A->ti->style == ts::OBJECT) {
     // if the objects are of different length, then !(A <= B)
-    if (A->parameters.size() != B->parameters.size()) {
+    if (A->param_types.size() != B->param_types.size()) {
       return false;
     }
 
@@ -66,11 +73,11 @@ bool helion::subtype(datatype *A, datatype *B) {
     // now we check if the base type A <= B by walking the inheritence list
     while (A != any_type) {
       // TODO: use type ids, not string names...
-      if (A->name == B->name) {
+      if (A->ti->name == B->ti->name) {
         // all of the parameter types must be subtypes
-        for (size_t i = 0; i < A->parameters.size(); i++) {
-          auto &T = A->parameters[i];
-          auto &S = B->parameters[i];
+        for (size_t i = 0; i < A->param_types.size(); i++) {
+          auto &T = A->param_types[i];
+          auto &S = B->param_types[i];
           // if T is not a subtype of S, then A isn't a subtype of B
           if (subtype(T, S) == false) {
             return false;
@@ -79,7 +86,7 @@ bool helion::subtype(datatype *A, datatype *B) {
 
         return true;
       }
-      A = &A->super;
+      A = A->ti->super;
     }
 
     // all the checks pass for object types
@@ -95,31 +102,43 @@ bool helion::subtype(datatype *A, datatype *B) {
 
 text datatype::str() {
   text s;
-  if (style == type_style::INTEGER) {
+  if (ti->style == typeinfo::type_style::INTEGER) {
     s += "Int";
-    s += std::to_string(bits);
+    s += std::to_string(ti->bits);
     return s;
-  } else if (style == type_style::FLOATING) {
+  } else if (ti->style == typeinfo::type_style::FLOATING) {
     s += "Float";
-    s += std::to_string(bits);
+    s += std::to_string(ti->bits);
     return s;
-  } else if (style == type_style::OBJECT || style == type_style::TUPLE ||
-             style == type_style::UNION) {
-    if (style == type_style::OBJECT) s += name;
-    if (style == type_style::TUPLE) s += "Tuple";
-    if (style == type_style::UNION) s += "Union";
+  } else if (ti->style == typeinfo::type_style::OBJECT || ti->style == typeinfo::type_style::TUPLE ||
+             ti->style == typeinfo::type_style::UNION) {
+    if (ti->style == typeinfo::type_style::OBJECT) s += ti->name;
+    if (ti->style == typeinfo::type_style::TUPLE) s += "Tuple";
+    if (ti->style == typeinfo::type_style::UNION) s += "Union";
 
-    if (parameters.size() > 0) {
-      s += "<";
-      for (size_t i = 0; i < parameters.size(); i++) {
-        auto &v = parameters[i];
-        if (v != nullptr) {
-          s += v->str();
+    if (specialized) {
+      if (param_types.size() > 0) {
+        s += "<";
+        for (size_t i = 0; i < param_types.size(); i++) {
+          auto &v = param_types[i];
+          if (v != nullptr) {
+            s += v->str();
+          }
+          if (i < param_types.size() - 1) s += ", ";
         }
-        if (i < parameters.size() - 1) s += ", ";
+        s += ">";
       }
-      s += ">";
+    } else {
+      if (ti->param_names.size() > 0) {
+        s += "<";
+        for (size_t i = 0; i < ti->param_names.size(); i++) {
+          s += ti->param_names[i];
+          if (i < ti->param_names.size() - 1) s += ", ";
+        }
+        s += ">";
+      }
     }
+
   } else {
     s += "Unkown!!!!";
   }
@@ -128,12 +147,82 @@ text datatype::str() {
 }
 
 datatype &datatype::create(std::string name, datatype &sup,
-                           std::vector<datatype *> params) {
+                           std::vector<std::string> params) {
   std::unique_ptr<datatype> t(new datatype(name, sup));
-  t->parameters = params;
+  t->ti->param_names = params;
+  t->specialized = params.size() == 0;
   int tid = types.size();
-  t->tid = tid;
-
   types.emplace_back(std::move(t));
   return *types[tid];
+}
+
+
+
+datatype &datatype::create_integer(std::string name, int bits) {
+  std::unique_ptr<datatype> t(new datatype(name, *int32_type));
+  int tid = types.size();
+  t->ti->bits = bits;
+  t->specialized = true;
+  t->ti->style = typeinfo::type_style::INTEGER;
+  types.emplace_back(std::move(t));
+  return *types[tid];
+}
+
+
+datatype &datatype::create_float(std::string name, int bits) {
+  std::unique_ptr<datatype> t(new datatype(name, *float32_type));
+  int tid = types.size();
+  t->ti->bits = bits;
+  t->ti->specialized = true;
+  t->ti->style = typeinfo::type_style::FLOATING;
+  types.emplace_back(std::move(t));
+  return *types[tid];
+}
+
+void datatype::add_field(std::string name, datatype *type) {
+  typeinfo::field f;
+  f.name = name;
+  f.type = type;
+  ti->fields.push_back(f);
+}
+
+llvm::Type *datatype::to_llvm(void) {
+  if (!specialized)
+    throw std::logic_error("cannot lower an unspecialized type to llvm::Type");
+
+  if (type_decl != nullptr) return type_decl;
+
+
+  if (ti->style == typeinfo::type_style::INTEGER) {
+    type_decl = llvm::Type::getIntNTy(llvm_ctx, ti->bits);
+  } else if (ti->style == typeinfo::type_style::FLOATING) {
+    if (ti->bits == 32) {
+      type_decl = llvm::Type::getFloatTy(llvm_ctx);
+    } else if (ti->bits == 64) {
+      type_decl = llvm::Type::getDoubleTy(llvm_ctx);
+    } else {
+      throw std::logic_error("Floats must be 32 or 64 bit");
+    }
+  } else if (ti->style == typeinfo::type_style::OBJECT) {
+    std::string tname = str();
+
+    std::vector<llvm::Type*> flds;
+
+
+    // push back a voidptr type
+    //
+    auto vd = llvm::Type::getInt8PtrTy(llvm_ctx);
+
+    flds.push_back(vd);
+
+    for (auto &f : ti->fields) {
+      flds.push_back(f.type->to_llvm());
+    }
+
+    type_decl = llvm::StructType::get(llvm_ctx, flds);
+
+    // build an LLVM struct
+  }
+
+  return type_decl;
 }

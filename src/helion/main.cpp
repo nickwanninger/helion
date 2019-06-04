@@ -55,12 +55,6 @@ int main(int argc, char **argv) {
   auto file_opt = app.add_option("entry point", entry_point, "the entry file");
   file_opt->required(true);
 
-  /*
-  std::string llvm_args;
-  app.add_option("-C,--llvm-args", llvm_args, "options to pass to the llvm
-  compiler"); puts("llvm args:", llvm_args);
-  */
-
   app.allow_extras(true);
 
   CLI11_PARSE(app, argc, argv);
@@ -70,20 +64,9 @@ int main(int argc, char **argv) {
   GC_allow_register_threads();
 
 
+
   helion::init();
 
-
-
-  auto &A = datatype::create("A");
-  auto &B = datatype::create("B", A);
-
-
-  puts(A.str());
-  puts(B.str());
-
-  if (subtype(&A, &B)) {
-    puts("subtype");
-  }
 
   const char *ep_ptr = entry_point.c_str();
 
@@ -101,11 +84,15 @@ int main(int argc, char **argv) {
 
   try {
     auto res = parse_module(src, entry_point);
-    puts(res->str());
+
+
+    for (auto &t : res->typedefs) {
+      puts(t->str());
+    }
+
+
   } catch (syntax_error &e) {
     puts(e.what());
-  } catch (std::exception &e) {
-    puts("Other error:", e.what());
   }
   return 0;
 }

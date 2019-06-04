@@ -26,6 +26,8 @@ tokens = [
     "or",
     "and",
     "not",
+    "let",
+    "const",
     "is_type",
     "colon",
     "do",

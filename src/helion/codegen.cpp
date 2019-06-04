@@ -50,9 +50,6 @@ struct cgval {
 
 
 
-
-
-
 static void init_llvm_env(llvm::Module *);
 
 
@@ -163,21 +160,121 @@ class cg_ctx {
   cg_ctx(llvm::LLVMContext &llvmctx) : builder(llvmctx) {}
 };
 
+struct cg_scope {};
+
+struct cg_options {};
 
 
 
-// main entry point to the compiler. All code must be generated into a function, so
-// this function must compile a method instance.
+
+// main entry point to the compiler. All code must be generated into a function,
+// so this function must compile a method instance.
 static std::unique_ptr<llvm::Module> emit_function(method_instance *lam) {
   std::unique_ptr<llvm::Module> m;
 
 
 
+  /*
   // step 1. Build code context for the compilation of this method
   cg_ctx ctx(llvm_ctx);
   ctx.linfo = lam;
 
   ctx.func_name = lam->of->name;
-
+  */
   return m;
 }
+
+
+
+
+llvm::Value *ast::number::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+
+
+llvm::Value *ast::binary_op::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+llvm::Value *ast::dot::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+
+llvm::Value *ast::subscript::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+llvm::Value *ast::call::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+
+
+llvm::Value *ast::tuple::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+
+llvm::Value *ast::string::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+llvm::Value *ast::keyword::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+llvm::Value *ast::nil::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+llvm::Value *ast::do_block::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+llvm::Value *ast::return_node::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+
+llvm::Value *ast::type_node::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+llvm::Value *ast::var_decl::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+
+llvm::Value *ast::var::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+llvm::Value *ast::prototype::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+
+llvm::Value *ast::func::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+
+llvm::Value *ast::def::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+llvm::Value *ast::if_node::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+
+llvm::Value *ast::typedef_node::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+
+llvm::Value *ast::typeassert::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
+  return nullptr;
+}
+

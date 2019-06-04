@@ -4,6 +4,8 @@
 
 #include <cxxabi.h>
 #include <helion/ast.h>
+#include <helion/pstate.h>
+#include <atomic>
 
 using namespace helion;
 using namespace helion::ast;
@@ -12,19 +14,8 @@ using namespace helion::ast;
 text ast::module::str(int depth) {
   text s;
 
-  char ptr[32];
-  sprintf(ptr, "# begin module %p\n\n", this);
-  s += ptr;
 
   for (auto stmt : stmts) {
-    s += "# ";
-    int status;
-    ast::node* p = stmt.get();
-    char* demangled = abi::__cxa_demangle(typeid(*p).name(), 0, 0, &status);
-    s += demangled;
-    free(demangled);
-    sprintf(ptr, " at %p\n", stmt.get());
-    s += ptr;
     s += stmt->str(0);
     s += "\n\n";
   }
@@ -87,15 +78,34 @@ text ast::subscript::str(int) {
 }
 
 
+std::atomic<int> var_index = 0;
+ast::var_decl::var_decl(scope* s) : node(s) { ind = var_index++; }
+
 text ast::var_decl::str(int d) {
   text s;
+
+  if (!is_arg) s += "let ";
+
+  if (type != nullptr && (type->known || type->constant)) {
+    s += type->str();
+    s += " ";
+  }
   s += name;
-  s += " = ";
-  s += value->str(d+1);
+
+  if (value != nullptr) {
+    s += " = ";
+    s += value->str(d + 1);
+  }
   return s;
 }
 
-text ast::var::str(int) { return global ? global_name : decl->name; }
+text ast::var::str(int) {
+  if (global) return global_name;
+  text s;
+
+  s += decl->name;
+  return s;
+}
 
 
 
@@ -180,32 +190,46 @@ text ast::do_block::str(int depth) {
 }
 
 
+text ast::typeassert::str(int) {
+  text s;
+  s += "(";
+  s += val->str();
+  s += " :: ";
+  s += type->str();
+  s += ")";
+  return s;
+}
+
 
 text ast::type_node::str(int) {
   text s;
 
-  if (type == NORMAL_TYPE) {
-    s += name;
+  if (constant) s += "const";
 
-    if (params.size() > 0) {
-      s += "{";
+  if (known) {
+    if (constant) s += " ";
+    if (type == NORMAL_TYPE) {
+      s += name;
+      if (params.size() > 0) {
+        s += "{";
 
-      for (size_t i = 0; i < params.size(); i++) {
-        auto& param = params[i];
-        s += param->str();
-        if (i < params.size() - 1) {
-          s += ", ";
+        for (size_t i = 0; i < params.size(); i++) {
+          auto& param = params[i];
+          s += param->str();
+          if (i < params.size() - 1) {
+            s += ", ";
+          }
         }
+        s += "}";
       }
-      s += "}";
+      return s;
     }
-    return s;
-  }
-  if (type == SLICE_TYPE) {
-    s += "[";
-    s += params[0]->str();
-    s += "]";
-    return s;
+    if (type == SLICE_TYPE) {
+      s += "[";
+      s += params[0]->str();
+      s += "]";
+      return s;
+    }
   }
   return s;
 }
@@ -218,13 +242,7 @@ text ast::prototype::str(int) {
 
   for (size_t i = 0; i < args.size(); i++) {
     auto& arg = args[i];
-    if (arg.type != nullptr) {
-      s += arg.type->str();
-      s += " ";
-    } else {
-      s += "Auto ";
-    }
-    s += arg.name;
+    s += arg->str();
     if (i < args.size() - 1) {
       s += ", ";
     }
@@ -232,21 +250,39 @@ text ast::prototype::str(int) {
   s += ")";
 
 
-  s += " : ";
 
-  if (return_type != nullptr) {
+  if (return_type != nullptr && return_type->known) {
+    s += " : ";
     s += return_type->str();
-  } else {
-    s += "Auto";
   }
   return s;
 }
 
 text ast::func::str(int depth) {
+  text indent = "";
+  for (int i = 0; i < depth; i++) indent += "  ";
+
   text s;
   s += proto->str();
   s += " -> ";
-  s += body->str(depth + 1);
+
+  if (stmts.size() > 1) {
+    s += "do\n";
+
+    for (auto& e : stmts) {
+      s += indent;
+      s += "  ";
+      s += e->str(depth + 1);
+      s += "\n";
+    }
+    s += stmts[0]->str(depth + 1);
+
+
+    s += indent;
+    s += "end";
+  } else {
+    s += stmts[0]->str(depth + 1);
+  }
   return s;
 }
 
@@ -260,11 +296,10 @@ text ast::def::str(int depth) {
   s += "def ";
   s += name;
   s += " ";
-  if (proto != nullptr) {
-    s += proto->str();
-  }
+
+  if (fn->proto != nullptr) s += fn->proto->str();
   s += "\n";
-  for (auto& e : exprs) {
+  for (auto& e : fn->stmts) {
     s += indent;
     s += "  ";
     s += e->str(depth + 1);
@@ -289,11 +324,7 @@ text ast::typedef_node::str(int depth) {
   }
   s += "\n";
 
-
-  s += indent;
-  s += "  ";
-  s += "# Fields\n";
-  for (auto & field : fields) {
+  for (auto& field : fields) {
     s += indent;
     s += "  ";
     s += field.type->str();
@@ -303,13 +334,10 @@ text ast::typedef_node::str(int depth) {
   }
 
 
-  s += indent;
-  s += "  ";
-  s += "# Methods\n";
-  for (auto & def : defs) {
+  for (auto& def : defs) {
     s += indent;
     s += "  ";
-    s += def->str(depth+1);
+    s += def->str(depth + 1);
     s += "\n";
   }
 
@@ -322,6 +350,8 @@ text ast::typedef_node::str(int depth) {
 text ast::return_node::str(int depth) {
   text s;
   s += "return ";
+
+
   s += val->str(depth + 1);
   return s;
 }

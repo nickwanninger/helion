@@ -17,15 +17,19 @@ namespace helion {
 
   namespace ast {
     class node;
-  };
+    class func;
+  };  // namespace ast
 
   class scope {
    public:
-    inline scope() { m_parent = nullptr; }
+    // a scope should know about the function it is based around
+    std::shared_ptr<ast::func> fn;
 
+    inline scope() { m_parent = nullptr; }
     inline scope *spawn() {
       auto ns = std::make_unique<scope>();
       ns->m_parent = this;
+      ns->fn = fn;
       scope *ptr = ns.get();
       children.push_back(std::move(ns));
       return ptr;
@@ -45,9 +49,48 @@ namespace helion {
       return nullptr;
     }
 
-    inline void bind(std::string &name, std::shared_ptr<ast::var_decl> &node) {
+    inline void bind(std::string name, std::shared_ptr<ast::var_decl> &node) {
       // very simple...
       m_vars[name] = node;
+    }
+
+
+    inline text str(int depth = 0) {
+      text indent = "";
+      text ic = "  ";
+      for (int i = 0; i < depth; i++) indent += ic;
+
+      text s;
+
+      s += "{";
+      s += "\"vars\": [";
+      {
+        size_t i = 0;
+        for (auto &v : m_vars) {
+          i++;
+          s += "\"";
+          s += v.first;
+          s += "\"";
+          if (i < m_vars.size()) s += ", ";
+        }
+      }
+      s += "]";
+
+
+      if (children.size() > 0) {
+        s += ", \"children\": [";
+        size_t i = 0;
+        for (auto &c : children) {
+          i++;
+          s += c->str(depth + 1);
+          if (i < children.size()) {
+            s += ", ";
+          };
+        }
+        s += "]";
+      }
+      s += "}";
+      return s;
     }
 
 
@@ -64,9 +107,6 @@ namespace helion {
     std::shared_ptr<tokenizer> tokn = nullptr;
 
    public:
-    scope *sc = nullptr;
-
-
     inline pstate() {}
     inline pstate(std::shared_ptr<tokenizer> t, int i = 0) {
       ind = i;
@@ -92,7 +132,6 @@ namespace helion {
     }
     inline pstate next(void) {
       auto p = pstate(tokn, ind + 1);
-      p.sc = sc;
       return p;
     }
     inline bool done(void) { return first().type == tok_eof; }
@@ -106,10 +145,18 @@ namespace helion {
     }
 
 
+
     inline pstate operator--(int) {
       pstate self = *this;
       ind--;
       return self;
+    }
+
+
+    inline pstate &operator=(pstate o) {
+      tokn = o.tokn;
+      ind = o.ind;
+      return *this;
     }
   };
 
