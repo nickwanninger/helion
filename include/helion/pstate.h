@@ -9,6 +9,7 @@
 #include <helion/core.h>
 #include <helion/tokenizer.h>
 #include <helion/util.h>
+#include <helion/ast.h>
 #include <memory>
 #include <unordered_map>
 
@@ -22,6 +23,7 @@ namespace helion {
 
   class scope {
    public:
+    bool global = false;
     // a scope should know about the function it is based around
     std::shared_ptr<ast::func> fn;
 

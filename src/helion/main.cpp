@@ -37,19 +37,13 @@ extern "C" void GC_allow_register_threads();
 void parse_args(jit::enviroment *, std::vector<std::string> &);
 
 
-
 int main(int argc, char **argv) {
   CLI::App app;
-
-
   std::string driver_path = ":NONE";
   std::string driver_opts = ":NONE";
   app.add_option("-D,--driver", driver_path, "path to the driver dylib");
   app.add_option("-d,--driver_opts", driver_opts,
                  "options to pass into the driver");
-
-
-
 
   std::string entry_point;
   auto file_opt = app.add_option("entry point", entry_point, "the entry file");
@@ -84,13 +78,8 @@ int main(int argc, char **argv) {
 
   try {
     auto res = parse_module(src, entry_point);
-
-
-    for (auto &t : res->typedefs) {
-      puts(t->str());
-    }
-
-
+    // puts(res->str());
+    compile_module(std::move(res));
   } catch (syntax_error &e) {
     puts(e.what());
   }

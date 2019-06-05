@@ -13,12 +13,22 @@ using namespace helion::ast;
 
 text ast::module::str(int depth) {
   text s;
-
-
-  for (auto stmt : stmts) {
-    s += stmt->str(0);
+  for (auto d : defs) {
+    s += d->str(0);
     s += "\n\n";
   }
+
+
+  for (auto d : typedefs) {
+    s += d->str(0);
+    s += "\n\n";
+  }
+
+  if (entry != nullptr) {
+    s += entry->str(0);
+    s += "\n\n";
+  }
+
 
   return s;
 }
@@ -345,6 +355,8 @@ text ast::typedef_node::str(int depth) {
   s += "end";
   return s;
 }
+
+
 
 
 text ast::return_node::str(int depth) {

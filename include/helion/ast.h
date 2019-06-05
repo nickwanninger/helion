@@ -8,6 +8,7 @@
 #include <helion/text.h>
 #include <helion/tokenizer.h>
 #include <helion/util.h>
+#include <helion/core.h>
 #include <vector>
 
 
@@ -17,8 +18,11 @@ namespace llvm {
 
 namespace helion {
 
+
   class scope;
 
+
+  // forward declaration
   class cg_ctx;
   class cg_scope;
   class cg_options;
@@ -30,10 +34,7 @@ namespace helion {
    * the ast represents the code at a more abstract level, and it
    * is produced by <helion/parser.h>.
    */
-
-
   namespace ast {
-
 
 
 #define NODE_FOOTER                                         \
@@ -275,8 +276,10 @@ namespace helion {
       std::shared_ptr<type_node> extends;
       std::vector<field_t> fields;
       std::vector<std::shared_ptr<ast::def>> defs;
+
       NODE_FOOTER;
     };
+
 
 
     class typeassert : public node {
@@ -304,6 +307,8 @@ namespace helion {
       std::vector<std::shared_ptr<ast::def>> defs;
       // stmts are top level expressions that will eventually be ran before main
       std::vector<std::shared_ptr<ast::node>> stmts;
+
+      std::shared_ptr<ast::def> entry;
 
       scope *get_scope(void);
       text str(int = 0);

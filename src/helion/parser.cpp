@@ -61,17 +61,19 @@ static auto glob_term(pstate s) {
 
 
 /**
- * primary parse function, ideally called per-file
+ * primary parse function, ideally called per-file, but can be
+ * called per-string
  */
 std::unique_ptr<ast::module> helion::parse_module(pstate s) {
   auto mod = std::make_unique<ast::module>();
 
+  mod->get_scope()->global = true;
 
+  std::vector<std::shared_ptr<ast::node>> stmts;
 
   while (true) {
     // every time a top level expr is parsed, the scope
     // is reset to the top level scope
-
     s = glob_term(s);
     if (s.first().type == tok_eof) break;
     // while we can, parse a statement
@@ -86,7 +88,7 @@ std::unique_ptr<ast::module> helion::parse_module(pstate s) {
         } else if (auto tn = std::dynamic_pointer_cast<ast::def>(v); tn) {
           mod->defs.push_back(tn);
         } else {
-          mod->stmts.push_back(v);
+          stmts.push_back(v);
         }
       }
 
@@ -106,6 +108,19 @@ std::unique_ptr<ast::module> helion::parse_module(pstate s) {
       throw syntax_error(s, "unexpected token");
     }
   }
+
+
+  auto entry = std::make_shared<ast::def>(mod->get_scope());
+
+  entry->fn = std::make_shared<ast::func>(mod->get_scope());
+  mod->get_scope()->fn = entry->fn;
+
+  // impossible function name
+  entry->name = "#entry";
+
+  entry->fn->stmts = stmts;
+
+  mod->entry = entry;
 
   return mod;
 }

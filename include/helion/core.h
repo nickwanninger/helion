@@ -39,6 +39,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 
+#include <mutex>
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
@@ -49,8 +50,6 @@
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 
 
-
-#include <helion/ast.h>
 #include <helion/text.h>
 
 /*
@@ -60,6 +59,13 @@
  */
 
 namespace helion {
+
+
+  namespace ast {
+    class node;
+    class typedef_node;
+    class module;
+  };  // namespace ast
 
   extern llvm::LLVMContext llvm_ctx;
 
@@ -97,12 +103,8 @@ namespace helion {
       TUPLE,
       METHOD,  // first parameter is
     };
-    struct field {
-      datatype *type;
-      std::string name;
-    };
 
-    std::shared_ptr<ast::type_node> node;
+    std::shared_ptr<ast::typedef_node> node;
 
     type_style style = type_style::OBJECT;
     std::string name;
@@ -117,12 +119,17 @@ namespace helion {
     datatype *super;
 
     std::vector<std::string> param_names;
-    std::vector<field> fields;
 
     std::vector<std::unique_ptr<datatype>> specializations;
+
+    std::mutex lock;
   };
 
   struct datatype {
+    struct field {
+      datatype *type;
+      std::string name;
+    };
     std::shared_ptr<typeinfo> ti;
 
     bool specialized = true;
@@ -130,6 +137,7 @@ namespace helion {
     std::vector<datatype *> param_types;
     // declaration of the type in LLVM as an llvm::Type
     llvm::Type *type_decl = nullptr;
+    std::vector<field> fields;
 
     static datatype &create(std::string, datatype & = *any_type,
                             std::vector<std::string> = {});
@@ -141,11 +149,19 @@ namespace helion {
     static datatype &create_float(std::string, int);
 
     void add_field(std::string, datatype *);
-    datatype *specialize(std::vector<datatype *>);
+    // datatype *specialize(std::vector<datatype *>);
 
     llvm::Type *to_llvm(void);
 
     text str(void);
+
+    inline datatype *spawn_spec() {
+      auto n = new datatype(*this);
+
+      ti->specializations.push_back(std::unique_ptr<datatype>(n));
+      n->specialized = true;
+      return n;
+    }
 
    private:
     inline datatype(std::string name, datatype &s) {
@@ -160,6 +176,23 @@ namespace helion {
     }
   };
 
+
+
+  struct cgval {
+    llvm::Value *v;
+    datatype *typ;
+    cgval(llvm::Value *v, datatype *typ) : v(v), typ(typ) {}
+    cgval() = delete;
+    inline operator llvm::Value *() const { return v; }
+    inline operator datatype *() const { return typ; }
+  };
+
+
+
+  // forward decl of codegen structs
+  class cg_ctx;
+  struct cg_binding;
+  class cg_scope;
 
 
 
@@ -280,6 +313,7 @@ namespace helion {
     value *data;
   };
 
+
   class module {
    public:
     module *parent = nullptr;
@@ -287,6 +321,10 @@ namespace helion {
     std::map<std::string, datatype *> types;
     std::map<std::string, binding *> bindings;
   };
+
+
+
+  void compile_module(std::unique_ptr<ast::module> m);
 
 
   llvm::Type *datatype_to_llvm(datatype *);

@@ -34,7 +34,8 @@ bool helion::subtype(datatype *A, datatype *B) {
   using ts = typeinfo::type_style;
 
 
-  if (!A->specialized || !B->specialized) throw std::logic_error("unable to check subtype of unspecialized types");
+  if (!A->specialized || !B->specialized)
+    throw std::logic_error("unable to check subtype of unspecialized types");
 
 
   if (A->ti->style != B->ti->style) return false;
@@ -110,7 +111,8 @@ text datatype::str() {
     s += "Float";
     s += std::to_string(ti->bits);
     return s;
-  } else if (ti->style == typeinfo::type_style::OBJECT || ti->style == typeinfo::type_style::TUPLE ||
+  } else if (ti->style == typeinfo::type_style::OBJECT ||
+             ti->style == typeinfo::type_style::TUPLE ||
              ti->style == typeinfo::type_style::UNION) {
     if (ti->style == typeinfo::type_style::OBJECT) s += ti->name;
     if (ti->style == typeinfo::type_style::TUPLE) s += "Tuple";
@@ -140,7 +142,7 @@ text datatype::str() {
     }
 
   } else {
-    s += "Unkown!!!!";
+    s += "";
   }
 
   return s;
@@ -180,16 +182,34 @@ datatype &datatype::create_float(std::string name, int bits) {
 }
 
 void datatype::add_field(std::string name, datatype *type) {
-  typeinfo::field f;
+  field f;
   f.name = name;
   f.type = type;
-  ti->fields.push_back(f);
+  fields.push_back(f);
 }
 
-llvm::Type *datatype::to_llvm(void) {
-  if (!specialized)
-    throw std::logic_error("cannot lower an unspecialized type to llvm::Type");
 
+
+/*
+datatype *datatype::specialize(std::vector<datatype *> params) {
+  // very quick test
+  if (params.size() != ti->param_names.size()) {
+    std::string err;
+    err += "Unable to specialize type ";
+    err += ti->name;
+    err += " with invalid number of parameters. Expected ";
+    err += std::to_string(ti->param_names.size());
+    err += ". Got ";
+    err += std::to_string(params.size());
+    throw std::logic_error(err.c_str());
+  }
+  if (specialized) return this;
+  return nullptr;
+}
+*/
+
+
+llvm::Type *datatype::to_llvm(void) {
   if (type_decl != nullptr) return type_decl;
 
 
@@ -204,22 +224,20 @@ llvm::Type *datatype::to_llvm(void) {
       throw std::logic_error("Floats must be 32 or 64 bit");
     }
   } else if (ti->style == typeinfo::type_style::OBJECT) {
+    if (!specialized)
+      throw std::logic_error(
+          "cannot lower an unspecialized type to llvm::Type");
     std::string tname = str();
-
-    std::vector<llvm::Type*> flds;
-
-
+    std::vector<llvm::Type *> flds;
     // push back a voidptr type
-    //
     auto vd = llvm::Type::getInt8PtrTy(llvm_ctx);
-
     flds.push_back(vd);
-
-    for (auto &f : ti->fields) {
+    for (auto &f : fields) {
       flds.push_back(f.type->to_llvm());
     }
 
-    type_decl = llvm::StructType::get(llvm_ctx, flds);
+    auto stct = llvm::StructType::get(llvm_ctx, flds);
+    type_decl = llvm::PointerType::get(stct, 0);
 
     // build an LLVM struct
   }
