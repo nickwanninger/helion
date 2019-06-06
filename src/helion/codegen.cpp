@@ -22,7 +22,7 @@ ojit_ee *helion::execution_engine = nullptr;
 
 static std::unique_ptr<cg_scope> global_scope;
 
-
+llvm::Module *global_module;
 
 
 static llvm::IntegerType *T_int32;
@@ -89,7 +89,7 @@ namespace helion {
     }
 
     // type lookups
-    datatype *find_type(std::string &name) {
+    datatype *find_type(std::string name) {
       auto *sc = this;
       while (sc != nullptr) {
         if (sc->m_types.count(name) != 0) {
@@ -162,6 +162,7 @@ void helion::init_codegen(void) {
   llvm::Module *m = init_llvm();
   init_llvm_env(m);
 
+  global_module = m;
 
   global_scope = std::make_unique<cg_scope>();
 
@@ -205,31 +206,31 @@ static void finalize_module(llvm::Module *m, bool shadow) {
 */
 
 
-
-
 static datatype *declare_type(std::shared_ptr<ast::typedef_node>, cg_scope *);
-static datatype *specialize_type(std::shared_ptr<ast::type_node> &, cg_scope *);
-
-static datatype *specialize_type(datatype *, std::vector<datatype *>,
-                                 cg_scope *);
-
-
 
 // convert a function ast node into a more abstract method
 static method *func_to_method(std::shared_ptr<ast::func>, cg_scope *);
 
-
 void helion::compile_module(std::unique_ptr<ast::module> m) {
   // the very first thing we have to do is declare the types
-  for (auto t : m->typedefs) {
-    auto *dt = declare_type(t, global_scope.get());
+  for (auto t : m->typedefs) declare_type(t, global_scope.get());
 
-    // try to specialize with no arguments
-    datatype *spec = specialize_type(dt, {&datatype::create_integer("Int512", 512)}, global_scope.get());
 
-    auto llt = spec->to_llvm();
-    llt->print(llvm::errs());
-  }
+  auto dt = global_scope->find_type("Node");
+
+
+  datatype *spec = specialize(
+      dt,
+      {specialize(global_scope->find_type("Point"), global_scope.get())},
+      global_scope.get());
+
+  auto llt = spec->to_llvm();
+
+
+  auto *glob =
+      new llvm::GlobalVariable(*global_module, llt, false,
+                               llvm::GlobalValue::CommonLinkage, 0, "instance");
+  global_module->print(llvm::errs(), nullptr);
 }
 
 /*
@@ -373,8 +374,7 @@ static datatype *declare_type(std::shared_ptr<ast::typedef_node> n,
   return t;
 }
 
-
-static datatype *specialize_type(std::shared_ptr<ast::type_node> &tn,
+datatype *helion::specialize(std::shared_ptr<ast::type_node> &tn,
                                  cg_scope *s) {
   std::string name = tn->name;
   datatype *t = s->find_type(name);
@@ -382,14 +382,20 @@ static datatype *specialize_type(std::shared_ptr<ast::type_node> &tn,
   std::vector<datatype *> p;
 
   for (auto &param : tn->params) {
-    p.push_back(specialize_type(param, s));
+    p.push_back(specialize(param, s));
   }
-  return specialize_type(t, p, s);
+  return specialize(t, p, s);
 }
 
-static datatype *specialize_type(datatype *t, std::vector<datatype *> params,
+
+datatype *helion::specialize(datatype *t, cg_scope *scp) {
+  return specialize(t, {}, scp);
+}
+
+datatype *helion::specialize(datatype *t, std::vector<datatype *> params,
                                  cg_scope *scp) {
-  if (t->ti->style == typeinfo::type_style::FLOATING || t->ti->style == typeinfo::type_style::INTEGER)
+  if (t->ti->style == typeinfo::type_style::FLOATING ||
+      t->ti->style == typeinfo::type_style::INTEGER)
     return t;
 
 
@@ -405,20 +411,17 @@ static datatype *specialize_type(datatype *t, std::vector<datatype *> params,
     throw std::logic_error(err.c_str());
   }
 
-
   // Step 2. Check if the current type is specialized or now. If it is,
   // short circuit and return it
-  // if (t->specialized) return t;
+  if (t->specialized) return t;
 
-  // grab a lock on the typeinfo
-  std::unique_lock lock(t->ti->lock);
 
   // Step 3. Search through the specializations in the typeinfo and
   //         attempt to find an existing specialization
   for (auto &s : t->ti->specializations) {
+    puts("spec:", s->str(), s->param_types == params);
     if (s->param_types == params) return s.get();
   }
-
 
   // Step 4. Create a new specialization, this is one of the more complicated
   //         parts of the specialization lookup
@@ -433,13 +436,13 @@ static datatype *specialize_type(datatype *t, std::vector<datatype *> params,
 
   // allocate a new instance of the datatype
   auto spec = t->spawn_spec();
+  spec->param_types = params;
   spec->ti = t->ti;  // fill in the type info
   auto node = t->ti->node;
 
   for (auto &f : node->fields) {
-    auto *ft = specialize_type(f.type, ns);
+    auto *ft = specialize(f.type, ns);
     spec->add_field(f.name, ft);
-    puts(f.name, ft->str());
   }
 
   return spec;
@@ -450,3 +453,4 @@ static datatype *specialize_type(datatype *t, std::vector<datatype *> params,
 static method *func_to_method(std::shared_ptr<ast::func>, cg_scope *) {
   return nullptr;
 }
+

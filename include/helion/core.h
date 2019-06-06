@@ -65,6 +65,7 @@ namespace helion {
     class node;
     class typedef_node;
     class module;
+    class type_node;
   };  // namespace ast
 
   extern llvm::LLVMContext llvm_ctx;
@@ -125,6 +126,10 @@ namespace helion {
     std::mutex lock;
   };
 
+
+
+
+  // the datatype representation in the engine
   struct datatype {
     struct field {
       datatype *type;
@@ -132,7 +137,9 @@ namespace helion {
     };
     std::shared_ptr<typeinfo> ti;
 
-    bool specialized = true;
+
+    bool specialized = false;
+    bool completed = false;
     // a list of type parameters. ie: Vector<Int>
     std::vector<datatype *> param_types;
     // declaration of the type in LLVM as an llvm::Type
@@ -157,9 +164,8 @@ namespace helion {
 
     inline datatype *spawn_spec() {
       auto n = new datatype(*this);
-
-      ti->specializations.push_back(std::unique_ptr<datatype>(n));
       n->specialized = true;
+      ti->specializations.push_back(std::unique_ptr<datatype>(n));
       return n;
     }
 
@@ -170,11 +176,10 @@ namespace helion {
       ti->super = &s;
     }
 
-    inline datatype(datatype &other) {
-      ti = other.ti;
-      specialized = other.specialized;
-    }
+    inline datatype(datatype &other) { ti = other.ti; }
   };
+
+
 
 
 
@@ -193,6 +198,11 @@ namespace helion {
   class cg_ctx;
   struct cg_binding;
   class cg_scope;
+
+
+  datatype *specialize(std::shared_ptr<ast::type_node> &, cg_scope *);
+  datatype *specialize(datatype *, std::vector<datatype *>, cg_scope *);
+  datatype *specialize(datatype *, cg_scope *);
 
 
 
@@ -282,6 +292,13 @@ namespace helion {
     const llvm::DataLayout &getDataLayout() const;
     const llvm::Triple &getTargetTriple() const;
 
+
+
+
+    inline uint64_t get_type_size(llvm::Type *t) {
+      return DL.getTypeAllocSize(t);
+    }
+
    private:
     /*
     std::string getMangledName(const std::string &Name);
@@ -326,8 +343,6 @@ namespace helion {
 
   void compile_module(std::unique_ptr<ast::module> m);
 
-
-  llvm::Type *datatype_to_llvm(datatype *);
 
 
 

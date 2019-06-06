@@ -1,5 +1,11 @@
-type Foo{T}
-	T i
+# test
+type Node{T}
+	T payload
+	Node{T} succ
 end
 
 
+type Point
+	Float x
+	Float y
+end

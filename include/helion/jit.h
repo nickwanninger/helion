@@ -98,6 +98,11 @@ namespace helion {
       }
 
 
+
+      inline uint64_t get_type_size(llvm::Type *t) {
+        return data_layout.getTypeAllocSize(t);
+      }
+
      private:
       JITSymbol findMangledSymbol(const std::string &Name) {
         const bool ExportedSymbolsOnly = true;

@@ -21,7 +21,6 @@ add_executable(helion
 	src/helion/text.cpp
 	src/helion/ast.cpp
 	src/helion/tokenizer.cpp
-	src/helion/cgutils.cpp
 	src/helion/env.cpp
 	src/helion/codegen.cpp
 	src/helion/ojit_ee.cpp

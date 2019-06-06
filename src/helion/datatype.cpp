@@ -2,6 +2,7 @@
 // MIT - See LICENSE.md file in the package.
 
 #include <helion/core.h>
+#include <helion/util.h>
 
 using namespace helion;
 
@@ -32,11 +33,6 @@ void helion::init_types(void) {
 // Check if A is <= B (A is a subtype or equal to B)
 bool helion::subtype(datatype *A, datatype *B) {
   using ts = typeinfo::type_style;
-
-
-  if (!A->specialized || !B->specialized)
-    throw std::logic_error("unable to check subtype of unspecialized types");
-
 
   if (A->ti->style != B->ti->style) return false;
 
@@ -120,7 +116,7 @@ text datatype::str() {
 
     if (specialized) {
       if (param_types.size() > 0) {
-        s += "<";
+        s += "{";
         for (size_t i = 0; i < param_types.size(); i++) {
           auto &v = param_types[i];
           if (v != nullptr) {
@@ -128,16 +124,16 @@ text datatype::str() {
           }
           if (i < param_types.size() - 1) s += ", ";
         }
-        s += ">";
+        s += "}";
       }
     } else {
       if (ti->param_names.size() > 0) {
-        s += "<";
+        s += "{";
         for (size_t i = 0; i < ti->param_names.size(); i++) {
           s += ti->param_names[i];
           if (i < ti->param_names.size() - 1) s += ", ";
         }
-        s += ">";
+        s += "}";
       }
     }
 
@@ -152,7 +148,6 @@ datatype &datatype::create(std::string name, datatype &sup,
                            std::vector<std::string> params) {
   std::unique_ptr<datatype> t(new datatype(name, sup));
   t->ti->param_names = params;
-  t->specialized = params.size() == 0;
   int tid = types.size();
   types.emplace_back(std::move(t));
   return *types[tid];
@@ -175,13 +170,20 @@ datatype &datatype::create_float(std::string name, int bits) {
   std::unique_ptr<datatype> t(new datatype(name, *float32_type));
   int tid = types.size();
   t->ti->bits = bits;
-  t->ti->specialized = true;
+  t->specialized = true;
   t->ti->style = typeinfo::type_style::FLOATING;
   types.emplace_back(std::move(t));
   return *types[tid];
 }
 
 void datatype::add_field(std::string name, datatype *type) {
+  for (auto &f : fields) {
+    if (f.name == name) {
+      f.type = type;
+      return;
+    }
+  }
+
   field f;
   f.name = name;
   f.type = type;
@@ -189,29 +191,8 @@ void datatype::add_field(std::string name, datatype *type) {
 }
 
 
-
-/*
-datatype *datatype::specialize(std::vector<datatype *> params) {
-  // very quick test
-  if (params.size() != ti->param_names.size()) {
-    std::string err;
-    err += "Unable to specialize type ";
-    err += ti->name;
-    err += " with invalid number of parameters. Expected ";
-    err += std::to_string(ti->param_names.size());
-    err += ". Got ";
-    err += std::to_string(params.size());
-    throw std::logic_error(err.c_str());
-  }
-  if (specialized) return this;
-  return nullptr;
-}
-*/
-
-
 llvm::Type *datatype::to_llvm(void) {
   if (type_decl != nullptr) return type_decl;
-
 
   if (ti->style == typeinfo::type_style::INTEGER) {
     type_decl = llvm::Type::getIntNTy(llvm_ctx, ti->bits);
@@ -224,22 +205,25 @@ llvm::Type *datatype::to_llvm(void) {
       throw std::logic_error("Floats must be 32 or 64 bit");
     }
   } else if (ti->style == typeinfo::type_style::OBJECT) {
-    if (!specialized)
-      throw std::logic_error(
-          "cannot lower an unspecialized type to llvm::Type");
+
+    std::string s = str();
+    puts("creating struct");
+    auto stct = llvm::StructType::create(llvm_ctx, s);
+    type_decl = llvm::PointerType::get(stct, 0);
+
     std::string tname = str();
     std::vector<llvm::Type *> flds;
     // push back a voidptr type
+
     auto vd = llvm::Type::getInt8PtrTy(llvm_ctx);
     flds.push_back(vd);
+
+    // TODO(superclass): Add in superclass fields here.
     for (auto &f : fields) {
       flds.push_back(f.type->to_llvm());
     }
 
-    auto stct = llvm::StructType::get(llvm_ctx, flds);
-    type_decl = llvm::PointerType::get(stct, 0);
-
-    // build an LLVM struct
+    stct->setBody(flds);
   }
 
   return type_decl;
