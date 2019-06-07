@@ -231,12 +231,16 @@ void helion::compile_module(std::unique_ptr<ast::module> m) {
   for (auto t : m->typedefs) declare_type(t, global_scope.get());
 
 
-  auto dt = global_scope->find_type("Node");
-  datatype *spec = specialize(dt, {int32_type}, global_scope.get());
+  try {
+    auto dt = global_scope->find_type("Node");
+    datatype *spec = specialize(dt, {int32_type}, global_scope.get());
 
-  auto pmt = ast::parse_type("some V{V}");
-  pattern_match(pmt, spec, global_scope.get());
-  puts("V =", global_scope->find_type("V")->str());
+    auto pmt = ast::parse_type("some V{V}");
+    pattern_match(pmt, spec, global_scope.get());
+    puts("V =", global_scope->find_type("V")->str());
+  } catch (pattern_match_error &e) {
+    die(e.what());
+  }
 
   // global_module->print(llvm::errs(), nullptr);
 }
@@ -514,9 +518,14 @@ static void pattern_match_name(ast::type_node *n, datatype *on, cg_scope *s) {
     // set the type in the scope
     s->set_type(n->name, on);
   } else {
-		auto bound = s->find_type(n->name);
-		if (bound != on)
-      throw pattern_match_error(*n, *on, "Mismatched or undefined type");
+    auto bound = s->find_type(n->name);
+    if (bound != on) {
+      std::string err;
+      err += n->name;
+      err += " is bound to ";
+      err += bound->str();
+      throw pattern_match_error(*n, *on, err);
+    }
   }
 
   pattern_match_params(n, on, s);
@@ -564,7 +573,7 @@ void helion::pattern_match(std::shared_ptr<ast::type_node> &n, datatype *on,
 helion::pattern_match_error::pattern_match_error(ast::type_node &n,
                                                  datatype &with,
                                                  std::string msg) {
-  _msg += "Failed to pattern match on ";
+  _msg += "Failed to pattern match ";
   _msg += n.str();
   _msg += " with ";
   _msg += with.str();
