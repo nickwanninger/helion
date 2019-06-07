@@ -20,8 +20,8 @@ add_executable(helion
 	src/helion/datatype.cpp
 	src/helion/text.cpp
 	src/helion/ast.cpp
+	src/helion/module.cpp
 	src/helion/tokenizer.cpp
-	src/helion/env.cpp
 	src/helion/codegen.cpp
 	src/helion/ojit_ee.cpp
 	src/helion/gc.cpp

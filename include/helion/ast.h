@@ -194,6 +194,7 @@ namespace helion {
      public:
       var_decl(scope *s);
 
+      bool global = false;
       int ind = 0;
       bool is_arg = false;
       std::shared_ptr<type_node> type;

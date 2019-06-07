@@ -27,6 +27,7 @@ tokens = [
     "and",
     "not",
     "let",
+    "global",
     "const",
     "some",
     "is_type",

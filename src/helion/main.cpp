@@ -32,11 +32,6 @@ using namespace std::string_literals;
 extern "C" void GC_allow_register_threads();
 
 
-
-
-void parse_args(jit::enviroment *, std::vector<std::string> &);
-
-
 int main(int argc, char **argv) {
   CLI::App app;
   std::string driver_path = ":NONE";

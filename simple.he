@@ -2,3 +2,7 @@ type Node{T}
 	T payload
 	Node{T} next
 end
+
+
+let global add = (a, b) -> a + b
+

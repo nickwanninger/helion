@@ -96,6 +96,8 @@ text ast::var_decl::str(int d) {
 
   if (!is_arg) s += "let ";
 
+  if (global) s += "global ";
+
   if (type != nullptr) {
     s += type->str();
     s += " ";

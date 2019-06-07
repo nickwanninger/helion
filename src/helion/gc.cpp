@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <mutex>
 
+#include <helion/gc.h>
 
 
 #define GC_THREADS
@@ -53,3 +54,12 @@ void operator delete[](void* ptr) _NOEXCEPT { deallocate(ptr); }
 void operator delete(void* ptr, std::size_t s)_NOEXCEPT { deallocate(ptr); }
 void operator delete[](void* ptr, std::size_t s) _NOEXCEPT { deallocate(ptr); }
 
+
+
+void *helion::gc::alloc(int n) {
+  return GC_MALLOC(n);
+}
+
+void helion::gc::free(void *p) {
+  GC_FREE(p);
+}

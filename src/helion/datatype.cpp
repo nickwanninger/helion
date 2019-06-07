@@ -25,6 +25,7 @@ void helion::init_types(void) {
   any_type = &datatype::create("Any");
   int32_type = &datatype::create_integer("Int", 32);
   float32_type = &datatype::create_float("Float", 32);
+
 }
 
 // line for line implementation of the subtype algorithm from the julia paper.
@@ -100,12 +101,10 @@ bool helion::subtype(datatype *A, datatype *B) {
 text datatype::str() {
   text s;
   if (ti->style == type_style::INTEGER) {
-    s += "Int";
-    s += std::to_string(ti->bits);
+    s += ti->name;
     return s;
   } else if (ti->style == type_style::FLOATING) {
-    s += "Float";
-    s += std::to_string(ti->bits);
+    s += ti->name;
     return s;
   } else if (ti->style == type_style::OBJECT ||
              ti->style == type_style::TUPLE ||

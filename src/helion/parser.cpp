@@ -1101,8 +1101,20 @@ static presult parse_let(pstate s, scope *sc) {
   auto decl = make<ast::var_decl>(sc);
 
 
+
+  if (s.first().type == tok_global) {
+    decl->global = true;
+    s++;
+  }
+
+  if (sc->global) decl->global = true;
+
   // attempt to parse a type
   auto tp = parse_type(s, sc);
+
+
+
+
 
 
   bool has_type = false;

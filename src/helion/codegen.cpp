@@ -3,9 +3,9 @@
 
 #include <helion/ast.h>
 #include <helion/core.h>
+#include <helion/gc.h>
 #include <iostream>
 #include <unordered_map>
-
 using namespace helion;
 
 
@@ -58,6 +58,7 @@ namespace helion {
    protected:
     std::unordered_map<std::string, datatype *> m_types;
     std::unordered_map<std::string, std::unique_ptr<cg_binding>> m_bindings;
+    std::unordered_map<llvm::Value *, datatype *> m_val_types;
     cg_scope *m_parent;
 
     std::vector<std::unique_ptr<cg_scope>> children;
@@ -99,6 +100,45 @@ namespace helion {
     }
 
     void set_type(std::string name, datatype *T) { m_types[name] = T; }
+
+
+
+    datatype *find_val_type(llvm::Value *v) {
+      auto *sc = this;
+      while (sc != nullptr) {
+        if (sc->m_val_types.count(v) != 0) {
+          return sc->m_val_types[v];
+        }
+        sc = sc->m_parent;
+      }
+      return nullptr;
+    }
+
+    void set_val_type(llvm::Value *val, datatype *t) { m_val_types[val] = t; }
+
+
+    inline text str(int depth = 0) {
+      text indent = "";
+      for (int i = 0; i < depth; i++) indent += "  ";
+      text s;
+      for (auto &t : m_types) {
+        s += indent;
+        s += t.first;
+        s += " : ";
+        s += t.second->str();
+        s += "\n";
+      }
+
+
+      for (auto &c : children) {
+        s += c->str(depth + 1);
+      }
+
+      return s;
+    }
+
+
+    void set_parent(cg_scope *s) { m_parent = s; }
   };
 
   class cg_options {};
@@ -113,6 +153,12 @@ static void init_llvm_env(llvm::Module *);
 static void setup_module(llvm::Module *m) {
   m->setDataLayout(data_layout);
   m->setTargetTriple(target_machine->getTargetTriple().str());
+}
+
+static std::unique_ptr<llvm::Module> create_module(std::string name) {
+  auto mod = std::make_unique<llvm::Module>(name, llvm_ctx);
+  setup_module(mod.get());
+  return mod;
 }
 
 
@@ -130,7 +176,7 @@ static llvm::Module *init_llvm(void) {
   m = new llvm::Module("helion", llvm_ctx);
   llvm::TargetOptions options = llvm::TargetOptions();
 
-  options.PrintMachineCode = true;
+  // options.PrintMachineCode = true;
 
   llvm::EngineBuilder eb((std::unique_ptr<llvm::Module>(engine_module)));
   std::string err_str;
@@ -235,28 +281,60 @@ void helion::compile_module(std::unique_ptr<ast::module> m) {
     auto dt = global_scope->find_type("Node");
     datatype *spec = specialize(dt, {int32_type}, global_scope.get());
 
-    auto pmt = ast::parse_type("some V{V}");
+    auto pmt = ast::parse_type("some V{some T}");
+
+
+
     pattern_match(pmt, spec, global_scope.get());
-    puts("V =", global_scope->find_type("V")->str());
   } catch (pattern_match_error &e) {
     die(e.what());
   }
 
-  // global_module->print(llvm::errs(), nullptr);
+
+  {
+    cg_ctx ctx(llvm_ctx);
+
+    auto mod = create_module("add_module");
+
+    std::string name = "add";
+    // create a linkage to the allocation function.
+    // Sig = i8* allocate(i32);
+    auto int_type = int32_type->to_llvm();
+    auto typ = llvm::FunctionType::get(int_type, {int_type, int_type}, false);
+
+    ctx.func = llvm::Function::Create(typ, llvm::Function::ExternalLinkage, 0,
+                                      name, mod.get());
+
+
+    // Create a new basic block to start insertion into.
+    llvm::BasicBlock *BB =
+        llvm::BasicBlock::Create(llvm_ctx, "entry", ctx.func);
+    ctx.builder.SetInsertPoint(BB);
+
+    auto val = llvm::ConstantInt::get(llvm_ctx, llvm::APInt(32, 1, true));
+
+    ctx.builder.CreateRet(val);
+
+    verifyFunction(*ctx.func);
+
+
+    mod->print(llvm::errs(), nullptr);
+
+
+    execution_engine->add_module(std::move(mod));
+    auto symbol = execution_engine->find_symbol("add");
+    auto addr = llvm::cantFail(symbol.getAddress());
+    puts(addr);
+    auto func = reinterpret_cast<int (*)(int, int)>(addr);
+    printf("%p\n", func);
+    printf("%d\n", func(1, 2));
+  }
+
+
+  puts(global_scope->str());
+
+  global_module->print(llvm::errs(), nullptr);
 }
-
-/*
-static std::unique_ptr<llvm::Module> emit_function(method_instance *lam) {
-  std::unique_ptr<llvm::Module> m;
-
-  // step 1. Build code context for the compilation of this method
-  cg_ctx ctx(llvm_ctx);
-  ctx.linfo = lam;
-
-  ctx.func_name = lam->of->name;
-  return m;
-}
-*/
 
 
 
@@ -437,11 +515,12 @@ datatype *helion::specialize(datatype *t, std::vector<datatype *> params,
   //         parts of the specialization lookup
 
   // spawn a scope that the specialization will be built in
-  auto *ns = scp->spawn();
+  auto ns = cg_scope();
+  ns.set_parent(scp);
 
   // loop over and fill in the new scope
   for (size_t i = 0; i < t->ti->param_names.size(); i++) {
-    ns->set_type(t->ti->param_names[i], params[i]);
+    ns.set_type(t->ti->param_names[i], params[i]);
   }
 
   // allocate a new instance of the datatype
@@ -451,7 +530,7 @@ datatype *helion::specialize(datatype *t, std::vector<datatype *> params,
   auto node = t->ti->node;
 
   for (auto &f : node->fields) {
-    auto *ft = specialize(f.type, ns);
+    auto *ft = specialize(f.type, &ns);
     spec->add_field(f.name, ft);
   }
 
@@ -580,3 +659,32 @@ helion::pattern_match_error::pattern_match_error(ast::type_node &n,
   _msg += ": ";
   _msg += msg;
 }
+
+
+
+
+global_variable *module::find(std::string s) {
+  if (globals.count(s) == 0) return nullptr;
+  return globals.at(s).get();
+}
+
+void *module::global_create(std::string name, datatype *type) {
+  auto llt = type->to_llvm();
+  auto size = data_layout.getTypeAllocSize(llt);
+  // allocate that memory using the garbage collector
+  void *data = gc::alloc(size);
+
+  auto glob = std::make_unique<global_variable>();
+
+  glob->name = name;
+  glob->type = type;
+  glob->data = data;
+
+  globals.emplace(name, std::move(glob));
+
+  return data;
+}
+
+
+
+global_variable::~global_variable() { gc::free(data); }

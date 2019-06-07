@@ -195,8 +195,7 @@ namespace helion {
     long line;
     long col;
 
-    pattern_match_error(ast::type_node &n, datatype &with,
-                        std::string msg);
+    pattern_match_error(ast::type_node &n, datatype &with, std::string msg);
     inline const char *what() const throw() {
       // simply pull the value out of the msg
       return _msg.c_str();
@@ -229,8 +228,7 @@ namespace helion {
 
   // attempt to pattern match a type on another type, possibly updating the
   // scope with the parameter type names
-  void pattern_match(std::shared_ptr<ast::type_node> &, datatype *,
-                          cg_scope *);
+  void pattern_match(std::shared_ptr<ast::type_node> &, datatype *, cg_scope *);
 
 
 
@@ -283,55 +281,49 @@ namespace helion {
   class ojit_ee {
    public:
     using CompilerResultT = std::unique_ptr<llvm::MemoryBuffer>;
-    struct CompilerT {
-      CompilerT(ojit_ee *pjit) : jit(*pjit) {}
-      CompilerResultT operator()(llvm::Module &M);
 
-     private:
-      ojit_ee &jit;
-    };
-
-    typedef llvm::orc::LegacyRTDyldObjectLinkingLayer ObjLayerT;
-    typedef llvm::orc::LegacyIRCompileLayer<ObjLayerT, CompilerT> CompileLayerT;
-    typedef llvm::orc::VModuleKey ModuleHandleT;
+    typedef llvm::orc::LegacyRTDyldObjectLinkingLayer ObjLayer;
+    typedef llvm::orc::LegacyIRCompileLayer<ObjLayer, llvm::orc::SimpleCompiler>
+        CompileLayer;
+    typedef llvm::orc::VModuleKey ModuleHandle;
     typedef llvm::StringMap<void *> SymbolTableT;
     typedef llvm::object::OwningBinary<llvm::object::ObjectFile> OwningObj;
 
     ojit_ee(llvm::TargetMachine &TM);
 
-    /*
-    void *getPointerToGlobalIfAvailable(StringRef S);
-    void *getPointerToGlobalIfAvailable(const GlobalValue *GV);
-    void addModule(std::unique_ptr<Module> M);
-    void removeModule(ModuleHandleT H);
-    JL_JITSymbol findUnmangledSymbol(const std::string Name);
-    JL_JITSymbol resolveSymbol(const std::string &Name);
-    uint64_t getGlobalValueAddress(const std::string &Name);
-    uint64_t getFunctionAddress(const std::string &Name);
-    Function *FindFunctionNamed(const std::string &Name);
-    */
 
     void add_global_mapping(llvm::StringRef, uint64_t);
 
 
-    llvm::JITSymbol find_symbol(const std::string &Name,
-                                bool ExportedSymbolsOnly = false);
 
-
-    void add_module(std::unique_ptr<llvm::Module> M);
-    void remove_module(ModuleHandleT H);
+    ModuleHandle add_module(std::unique_ptr<llvm::Module>);
+    void remove_module(ModuleHandle);
 
     const llvm::DataLayout &getDataLayout() const;
     const llvm::Triple &getTargetTriple() const;
 
-
-
+    inline llvm::JITSymbol find_symbol(const std::string name) {
+      return find_mangled_symbol(mangle(name));
+    }
 
     inline uint64_t get_type_size(llvm::Type *t) {
       return DL.getTypeAllocSize(t);
     }
 
    private:
+    inline std::string mangle(const std::string &Name) {
+      std::string MangledName;
+      {
+        llvm::raw_string_ostream MangledNameStream(MangledName);
+        llvm::Mangler::getNameWithPrefix(MangledNameStream, Name, DL);
+      }
+      return MangledName;
+    }
+
+
+
+    llvm::JITSymbol find_mangled_symbol(const std::string &Name,
+                                        bool ExportedSymbolsOnly = false);
     /*
     std::string getMangledName(const std::string &Name);
     std::string getMangledName(const GlobalValue *GV);
@@ -342,40 +334,58 @@ namespace helion {
     // Should be big enough that in the common case, The
     // object fits in its entirety
 
-    llvm::orc::ExecutionSession ES;
+    llvm::orc::ExecutionSession exec_session;
     std::shared_ptr<llvm::orc::SymbolResolver> symbol_resolver;
     std::shared_ptr<llvm::RTDyldMemoryManager> mem_mgr;
-    ObjLayerT ObjectLayer;
-    CompileLayerT CompileLayer;
+    ObjLayer obj_layer;
+    CompileLayer compile_layer;
 
     SymbolTableT GlobalSymbolTable;
     SymbolTableT LocalSymbolTable;
+    std::vector<ModuleHandle> module_keys;
   };
 
+
+
+
+  // execution engine is a nice global that exposes interfaces that
+  // make sense for the use-cases of helion
   extern ojit_ee *execution_engine;
 
 
-  // a binding is what helion global variables are stored in
-  struct binding {
+  // a global_variable is what helion global variables are stored in
+  struct global_variable {
     datatype *type;
     text name;
-    value *data;
+    // A pointer to an unknown size of memory. Allocated
+    // when the global variable is created. It is enough to store
+    // a variable of the type in. ie: with objects, it's large enough
+    // to store a pointer. With primitives, its how many bytes that primitive
+    // is.
+    void *data;
+
+    ~global_variable();
   };
 
 
   class module {
-   public:
     module *parent = nullptr;
     text name;
-    std::map<std::string, datatype *> types;
-    std::map<std::string, binding *> bindings;
+    std::map<std::string, std::unique_ptr<global_variable>> globals;
+
+   public:
+    // represents the global scope for this module
+    std::unique_ptr<cg_scope> scope;
+
+    global_variable *find(std::string);
+
+    // Returns a pointer to the cell which the value is stored in
+    void *global_create(std::string, datatype *);
   };
 
 
 
   void compile_module(std::unique_ptr<ast::module> m);
-
-
 
 
   void init_types(void);
@@ -388,6 +398,12 @@ namespace helion {
     init_types();
     init_codegen();
   }
+
+
+
+
+  void *global_find(std::string);
+  void *global_set(std::string);
 
 };  // namespace helion
 
