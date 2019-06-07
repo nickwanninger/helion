@@ -35,6 +35,8 @@
 #include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Vectorize.h"
 
+#include "llvm/ExecutionEngine/Orc/IRTransformLayer.h"
+
 #include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
@@ -281,13 +283,15 @@ namespace helion {
   class ojit_ee {
    public:
     using CompilerResultT = std::unique_ptr<llvm::MemoryBuffer>;
-
     typedef llvm::orc::LegacyRTDyldObjectLinkingLayer ObjLayer;
     typedef llvm::orc::LegacyIRCompileLayer<ObjLayer, llvm::orc::SimpleCompiler>
         CompileLayer;
     typedef llvm::orc::VModuleKey ModuleHandle;
     typedef llvm::StringMap<void *> SymbolTableT;
     typedef llvm::object::OwningBinary<llvm::object::ObjectFile> OwningObj;
+
+
+
 
     ojit_ee(llvm::TargetMachine &TM);
 
@@ -321,6 +325,9 @@ namespace helion {
     }
 
 
+    std::unique_ptr<llvm::Module> opt_module(std::unique_ptr<llvm::Module>);
+
+
 
     llvm::JITSymbol find_mangled_symbol(const std::string &Name,
                                         bool ExportedSymbolsOnly = false);
@@ -339,6 +346,12 @@ namespace helion {
     std::shared_ptr<llvm::RTDyldMemoryManager> mem_mgr;
     ObjLayer obj_layer;
     CompileLayer compile_layer;
+
+    using OptimizeFunction = std::function<std::unique_ptr<llvm::Module>(
+        std::unique_ptr<llvm::Module>)>;
+
+
+    llvm::orc::LegacyIRTransformLayer<CompileLayer, OptimizeFunction> opt_layer;
 
     SymbolTableT GlobalSymbolTable;
     SymbolTableT LocalSymbolTable;

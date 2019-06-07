@@ -26,7 +26,10 @@ ojit_ee::ojit_ee(llvm::TargetMachine& TM)
                       std::make_shared<llvm::SectionMemoryManager>(),
                       symbol_resolver};
                 }),
-      compile_layer(obj_layer, llvm::orc::SimpleCompiler(TM)) {
+      compile_layer(obj_layer, llvm::orc::SimpleCompiler(TM)),
+      opt_layer(compile_layer, [this](std::unique_ptr<llvm::Module> M) {
+        return opt_module(std::move(M));
+      }) {
   llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
 }
 
@@ -83,8 +86,27 @@ llvm::JITSymbol ojit_ee::find_mangled_symbol(const std::string& name,
 
 ojit_ee::ModuleHandle ojit_ee::add_module(std::unique_ptr<llvm::Module> m) {
   auto K = exec_session.allocateVModule();
-  cantFail(compile_layer.addModule(K, std::move(m)));
+  cantFail(opt_layer.addModule(K, std::move(m)));
   module_keys.push_back(K);
   return K;
 }
 
+
+
+std::unique_ptr<llvm::Module> ojit_ee::opt_module(std::unique_ptr<llvm::Module> M) {
+  // Create a function pass manager.
+  auto FPM = llvm::make_unique<llvm::legacy::FunctionPassManager>(M.get());
+
+  // Add some optimizations.
+  FPM->add(llvm::createInstructionCombiningPass());
+  FPM->add(llvm::createReassociatePass());
+  FPM->add(llvm::createGVNPass());
+  FPM->add(llvm::createCFGSimplificationPass());
+  FPM->doInitialization();
+
+  // Run the optimizations over all functions in the module being added to
+  // the JIT.
+  for (auto& F : *M) FPM->run(F);
+
+  return M;
+}
