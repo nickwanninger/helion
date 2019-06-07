@@ -25,11 +25,9 @@ static std::unique_ptr<cg_scope> global_scope;
 llvm::Module *global_module;
 
 
-static llvm::IntegerType *T_int32;
-static llvm::IntegerType *T_int64;
-static llvm::Type *T_float32;
-static llvm::Type *T_float64;
-static llvm::Type *T_void;
+
+llvm::Function *allocate_function = nullptr;
+llvm::Function *deallocate_function = nullptr;
 
 
 
@@ -175,12 +173,32 @@ void helion::init_codegen(void) {
 
 
 
+// In this function we setup the enviroment functions and types that are needed
+// in the runtime of the JIT. This means creating linkage to an allocation
+// function, a free function and many other kinds of needed runtime functions.
+// We also create the builtin types, like ints and other types
 static void init_llvm_env(llvm::Module *m) {
-  T_int32 = llvm::Type::getInt32Ty(llvm_ctx);
-  T_int64 = llvm::Type::getInt64Ty(llvm_ctx);
-  T_float32 = llvm::Type::getFloatTy(llvm_ctx);
-  T_float64 = llvm::Type::getDoubleTy(llvm_ctx);
-  T_void = llvm::Type::getVoidTy(llvm_ctx);
+  {
+    // create a linkage to the allocation function.
+    // Sig = i8* allocate(i32);
+    std::vector<llvm::Type *> args;
+    args.push_back(int32_type->to_llvm());
+    auto return_type = llvm::Type::getInt8PtrTy(llvm_ctx, 0);
+    auto typ = llvm::FunctionType::get(return_type, args, false);
+    allocate_function = llvm::Function::Create(
+        typ, llvm::Function::ExternalLinkage, 0, "allocate", global_module);
+  }
+
+
+  {
+    // create a linkage to the deallocate function
+    // Sig = void deallocate(i8*);
+    std::vector<llvm::Type *> args = {llvm::Type::getInt8PtrTy(llvm_ctx, 0)};
+    auto typ =
+        llvm::FunctionType::get(llvm::Type::getVoidTy(llvm_ctx), args, false);
+    deallocate_function = llvm::Function::Create(
+        typ, llvm::Function::ExternalLinkage, 0, "deallocate", global_module);
+  }
 }
 
 
@@ -208,29 +226,19 @@ static void finalize_module(llvm::Module *m, bool shadow) {
 
 static datatype *declare_type(std::shared_ptr<ast::typedef_node>, cg_scope *);
 
-// convert a function ast node into a more abstract method
-static method *func_to_method(std::shared_ptr<ast::func>, cg_scope *);
-
 void helion::compile_module(std::unique_ptr<ast::module> m) {
   // the very first thing we have to do is declare the types
   for (auto t : m->typedefs) declare_type(t, global_scope.get());
 
 
   auto dt = global_scope->find_type("Node");
+  datatype *spec = specialize(dt, {int32_type}, global_scope.get());
 
+  auto pmt = ast::parse_type("some V{V}");
+  pattern_match(pmt, spec, global_scope.get());
+  puts("V =", global_scope->find_type("V")->str());
 
-  datatype *spec = specialize(
-      dt,
-      {specialize(global_scope->find_type("Point"), global_scope.get())},
-      global_scope.get());
-
-  auto llt = spec->to_llvm();
-
-
-  auto *glob =
-      new llvm::GlobalVariable(*global_module, llt, false,
-                               llvm::GlobalValue::CommonLinkage, 0, "instance");
-  global_module->print(llvm::errs(), nullptr);
+  // global_module->print(llvm::errs(), nullptr);
 }
 
 /*
@@ -374,8 +382,7 @@ static datatype *declare_type(std::shared_ptr<ast::typedef_node> n,
   return t;
 }
 
-datatype *helion::specialize(std::shared_ptr<ast::type_node> &tn,
-                                 cg_scope *s) {
+datatype *helion::specialize(std::shared_ptr<ast::type_node> &tn, cg_scope *s) {
   std::string name = tn->name;
   datatype *t = s->find_type(name);
 
@@ -393,9 +400,9 @@ datatype *helion::specialize(datatype *t, cg_scope *scp) {
 }
 
 datatype *helion::specialize(datatype *t, std::vector<datatype *> params,
-                                 cg_scope *scp) {
-  if (t->ti->style == typeinfo::type_style::FLOATING ||
-      t->ti->style == typeinfo::type_style::INTEGER)
+                             cg_scope *scp) {
+  if (t->ti->style == type_style::FLOATING ||
+      t->ti->style == type_style::INTEGER)
     return t;
 
 
@@ -419,7 +426,6 @@ datatype *helion::specialize(datatype *t, std::vector<datatype *> params,
   // Step 3. Search through the specializations in the typeinfo and
   //         attempt to find an existing specialization
   for (auto &s : t->ti->specializations) {
-    puts("spec:", s->str(), s->param_types == params);
     if (s->param_types == params) return s.get();
   }
 
@@ -450,7 +456,118 @@ datatype *helion::specialize(datatype *t, std::vector<datatype *> params,
 
 
 
-static method *func_to_method(std::shared_ptr<ast::func>, cg_scope *) {
-  return nullptr;
+static std::vector<std::unique_ptr<method>> method_table;
+
+// create a method from a global def. Simply a named func creation
+// in the global_scope
+method *method::create(std::shared_ptr<ast::def> &n) {
+  method *m = method::create(n->fn, global_scope.get());
+  m->name = n->name;
+  return m;
 }
 
+
+
+method *method::create(std::shared_ptr<ast::func> &fn, cg_scope *scp) {
+  auto m = std::make_unique<method>();
+  auto mptr = m.get();
+
+
+
+
+  method_table.push_back(std::move(m));
+  return mptr;
+}
+
+
+/**
+ * attempt to pattern match the parameters of the two types.
+ * This basically just requires that the two types have the same
+ * number of parameters, and all of the parameters pattern match
+ * successfully. Will throw
+ */
+static void pattern_match_params(ast::type_node *n, datatype *on, cg_scope *s) {
+  if (n->params.size() != on->param_types.size()) {
+    throw pattern_match_error(*n, *on, "Parameter count mismatch");
+  }
+
+  for (size_t i = 0; i < n->params.size(); i++) {
+    pattern_match(n->params[i], on->param_types[i], s);
+  }
+}
+
+
+
+/**
+ * Pattern match a simple type name. This ends up just being
+ * any type_node who's type is type_style::OBJECT. It then
+ * pattern matches on the parameters.
+ */
+static void pattern_match_name(ast::type_node *n, datatype *on, cg_scope *s) {
+  if (n->parameter) {
+    // if the name is a parameter, we need to assign it in the scope if there
+    // already is not a type under that name
+    if (auto bound = s->find_type(n->name); bound != nullptr) {
+      throw pattern_match_error(*n, *on, "Parameter already bound");
+    }
+
+    // set the type in the scope
+    s->set_type(n->name, on);
+  } else {
+		auto bound = s->find_type(n->name);
+		if (bound != on)
+      throw pattern_match_error(*n, *on, "Mismatched or undefined type");
+  }
+
+  pattern_match_params(n, on, s);
+}
+
+
+
+/**
+ * attempt to pattern match a slice type. Basically just pattern
+ * matches on the parameters.
+ */
+static void pattern_match_slice(ast::type_node *n, datatype *on, cg_scope *s) {
+  // the other type should be a slice as well
+  if (on->ti->style != type_style::SLICE)
+    throw pattern_match_error(
+        *n, *on, "Cannot pattern match slice against non-slice type");
+
+  // since slices store their types in the parameters, simply pattern match the
+  // parameters
+  pattern_match_params(n, on, s);
+}
+
+/**
+ * attempt to pattern match two types. Simply an entry point into
+ * multiple other places.
+ */
+void helion::pattern_match(std::shared_ptr<ast::type_node> &n, datatype *on,
+                           cg_scope *s) {
+  // the type we are pattern matching on must be specialized
+  assert(on->specialized);
+
+
+  // Determine the type of the node. If it is a plain type reference, pattern
+  // match on it and it's parameters.
+  if (n->style == type_style::OBJECT) {
+    pattern_match_name(n.get(), on, s);
+  }
+
+  if (n->style == type_style::SLICE) {
+    pattern_match_slice(n.get(), on, s);
+  }
+}
+
+
+helion::pattern_match_error::pattern_match_error(ast::type_node &n,
+                                                 datatype &with,
+                                                 std::string msg) {
+  _msg += "Failed to pattern match on ";
+  _msg += n.str();
+  _msg += " with ";
+  _msg += with.str();
+  _msg += ": ";
+  _msg += msg;
+}

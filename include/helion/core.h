@@ -66,6 +66,9 @@ namespace helion {
     class typedef_node;
     class module;
     class type_node;
+
+    class def;
+    class func;
   };  // namespace ast
 
   extern llvm::LLVMContext llvm_ctx;
@@ -89,6 +92,17 @@ namespace helion {
   struct value;
 
   struct datatype_name {};
+  enum class type_style : unsigned char {
+    OBJECT,    // normal reference type
+    INTEGER,   // is an n bit integer
+    FLOATING,  // is an n bit floating point number
+    UNION,     // is a union of the parameters
+    TUPLE,
+    METHOD,  // first parameter is the return type, then each other parameter
+             // is an argument
+    SLICE,   // the first parameter is the type of the slice. Only one param
+             // allowed
+  };
 
 
 
@@ -96,14 +110,6 @@ namespace helion {
     // a type can have multiple 'styles'. For example, Int32 has the style of
     // INTEGER, and thne has a size of 32. This is helpful when lowering to
     // llvm::Type
-    enum class type_style : unsigned char {
-      OBJECT,    // normal reference type
-      INTEGER,   // is an n bit integer
-      FLOATING,  // is an n bit floating point number
-      UNION,     // is a union of the parameters
-      TUPLE,
-      METHOD,  // first parameter is
-    };
 
     std::shared_ptr<ast::typedef_node> node;
 
@@ -182,6 +188,22 @@ namespace helion {
 
 
 
+  class pattern_match_error : public std::exception {
+    std::string _msg;
+
+   public:
+    long line;
+    long col;
+
+    pattern_match_error(ast::type_node &n, datatype &with,
+                        std::string msg);
+    inline const char *what() const throw() {
+      // simply pull the value out of the msg
+      return _msg.c_str();
+    }
+  };
+
+
 
   struct cgval {
     llvm::Value *v;
@@ -205,6 +227,12 @@ namespace helion {
   datatype *specialize(datatype *, cg_scope *);
 
 
+  // attempt to pattern match a type on another type, possibly updating the
+  // scope with the parameter type names
+  void pattern_match(std::shared_ptr<ast::type_node> &, datatype *,
+                          cg_scope *);
+
+
 
   // check if two types are
   bool subtype(datatype *A, datatype *B);
@@ -217,11 +245,15 @@ namespace helion {
 
   class method {
    public:
+    cg_scope *scope;
     std::string name;
     std::string file;
     std::shared_ptr<ast::node> src;
     // table of all method_instance specializations that we've compiled
     std::vector<method_instance *> specializations;
+
+    static method *create(std::shared_ptr<ast::def> &);
+    static method *create(std::shared_ptr<ast::func> &, cg_scope *);
   };
 
   class method_instance {
@@ -351,6 +383,8 @@ namespace helion {
 
 
   inline void init() {
+    // initialize the types before the codegen, because the codegen will require
+    // the the builtin types.
     init_types();
     init_codegen();
   }

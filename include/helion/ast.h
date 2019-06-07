@@ -175,19 +175,12 @@ namespace helion {
      */
     class type_node : public node {
      public:
-      // what kind of type node is this
-      enum type_node_type {
-        NORMAL_TYPE,    // normal representation, so Int, Float, etc..
-        FUNCTION_TYPE,  // function type, so Fn(Int) -> Int for example
-        SLICE_TYPE,     // slice types, so [T] where T is another type
-      };
-
       bool constant = false;
-      bool known = true;
+      bool parameter = false;
 
       text name;
 
-      type_node_type type = NORMAL_TYPE;
+      type_style style = type_style::OBJECT;
       // type parameters, like Vector{Int} where Int would live in here.
       std::vector<rc<type_node>> params;
 
@@ -314,6 +307,10 @@ namespace helion {
       text str(int = 0);
     };
 
+
+
+
+    std::shared_ptr<ast::type_node> parse_type(text);
 
 
   }  // namespace ast

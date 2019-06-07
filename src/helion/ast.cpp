@@ -96,7 +96,7 @@ text ast::var_decl::str(int d) {
 
   if (!is_arg) s += "let ";
 
-  if (type != nullptr && (type->known || type->constant)) {
+  if (type != nullptr) {
     s += type->str();
     s += " ";
   }
@@ -214,32 +214,37 @@ text ast::typeassert::str(int) {
 text ast::type_node::str(int) {
   text s;
 
-  if (constant) s += "const";
+  if (parameter) s += "some ";
+  if (constant) s += "const ";
 
-  if (known) {
-    if (constant) s += " ";
-    if (type == NORMAL_TYPE) {
-      s += name;
-      if (params.size() > 0) {
-        s += "{";
+  if (style == type_style::OBJECT) {
+    s += name;
+    if (params.size() > 0) {
+      s += "{";
 
-        for (size_t i = 0; i < params.size(); i++) {
-          auto& param = params[i];
-          s += param->str();
-          if (i < params.size() - 1) {
-            s += ", ";
-          }
+      for (size_t i = 0; i < params.size(); i++) {
+        auto& param = params[i];
+        s += param->str();
+        if (i < params.size() - 1) {
+          s += ", ";
         }
-        s += "}";
       }
-      return s;
+      s += "}";
     }
-    if (type == SLICE_TYPE) {
-      s += "[";
-      s += params[0]->str();
-      s += "]";
-      return s;
-    }
+    return s;
+  }
+  if (style == type_style::SLICE) {
+    s += "[";
+    s += params[0]->str();
+    s += "]";
+    return s;
+  }
+
+  if (style == type_style::METHOD) {
+    assert(params.size() > 0);
+    s += "(";
+
+    s += ")";
   }
   return s;
 }
@@ -261,7 +266,7 @@ text ast::prototype::str(int) {
 
 
 
-  if (return_type != nullptr && return_type->known) {
+  if (return_type != nullptr) {
     s += " : ";
     s += return_type->str();
   }

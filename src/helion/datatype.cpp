@@ -32,7 +32,7 @@ void helion::init_types(void) {
 //
 // Check if A is <= B (A is a subtype or equal to B)
 bool helion::subtype(datatype *A, datatype *B) {
-  using ts = typeinfo::type_style;
+  using ts = type_style;
 
   if (A->ti->style != B->ti->style) return false;
 
@@ -99,20 +99,20 @@ bool helion::subtype(datatype *A, datatype *B) {
 
 text datatype::str() {
   text s;
-  if (ti->style == typeinfo::type_style::INTEGER) {
+  if (ti->style == type_style::INTEGER) {
     s += "Int";
     s += std::to_string(ti->bits);
     return s;
-  } else if (ti->style == typeinfo::type_style::FLOATING) {
+  } else if (ti->style == type_style::FLOATING) {
     s += "Float";
     s += std::to_string(ti->bits);
     return s;
-  } else if (ti->style == typeinfo::type_style::OBJECT ||
-             ti->style == typeinfo::type_style::TUPLE ||
-             ti->style == typeinfo::type_style::UNION) {
-    if (ti->style == typeinfo::type_style::OBJECT) s += ti->name;
-    if (ti->style == typeinfo::type_style::TUPLE) s += "Tuple";
-    if (ti->style == typeinfo::type_style::UNION) s += "Union";
+  } else if (ti->style == type_style::OBJECT ||
+             ti->style == type_style::TUPLE ||
+             ti->style == type_style::UNION) {
+    if (ti->style == type_style::OBJECT) s += ti->name;
+    if (ti->style == type_style::TUPLE) s += "Tuple";
+    if (ti->style == type_style::UNION) s += "Union";
 
     if (specialized) {
       if (param_types.size() > 0) {
@@ -160,7 +160,7 @@ datatype &datatype::create_integer(std::string name, int bits) {
   int tid = types.size();
   t->ti->bits = bits;
   t->specialized = true;
-  t->ti->style = typeinfo::type_style::INTEGER;
+  t->ti->style = type_style::INTEGER;
   types.emplace_back(std::move(t));
   return *types[tid];
 }
@@ -171,7 +171,7 @@ datatype &datatype::create_float(std::string name, int bits) {
   int tid = types.size();
   t->ti->bits = bits;
   t->specialized = true;
-  t->ti->style = typeinfo::type_style::FLOATING;
+  t->ti->style = type_style::FLOATING;
   types.emplace_back(std::move(t));
   return *types[tid];
 }
@@ -194,9 +194,9 @@ void datatype::add_field(std::string name, datatype *type) {
 llvm::Type *datatype::to_llvm(void) {
   if (type_decl != nullptr) return type_decl;
 
-  if (ti->style == typeinfo::type_style::INTEGER) {
+  if (ti->style == type_style::INTEGER) {
     type_decl = llvm::Type::getIntNTy(llvm_ctx, ti->bits);
-  } else if (ti->style == typeinfo::type_style::FLOATING) {
+  } else if (ti->style == type_style::FLOATING) {
     if (ti->bits == 32) {
       type_decl = llvm::Type::getFloatTy(llvm_ctx);
     } else if (ti->bits == 64) {
@@ -204,7 +204,7 @@ llvm::Type *datatype::to_llvm(void) {
     } else {
       throw std::logic_error("Floats must be 32 or 64 bit");
     }
-  } else if (ti->style == typeinfo::type_style::OBJECT) {
+  } else if (ti->style == type_style::OBJECT) {
 
     std::string s = str();
     puts("creating struct");

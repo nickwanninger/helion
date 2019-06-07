@@ -1,11 +1,4 @@
-# test
 type Node{T}
 	T payload
-	Node{T} succ
-end
-
-
-type Point
-	Float x
-	Float y
+	Node{T} next
 end

@@ -28,6 +28,7 @@ tokens = [
     "not",
     "let",
     "const",
+    "some",
     "is_type",
     "colon",
     "do",

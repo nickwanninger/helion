@@ -4,12 +4,33 @@
 #include <helion/ast.h>
 #include <helion/parser.h>
 #include <helion/pstate.h>
-
+#include <atomic>
 #include <map>
+
+
+
+
 
 
 using namespace helion;
 
+
+static std::atomic<int> next_type_num;
+
+
+static text get_next_param_name(void) {
+  text name = "Inferred_";
+  name += std::to_string(next_type_num++);
+  return name;
+}
+
+
+static std::shared_ptr<ast::type_node> get_next_param_type(scope * s) {
+  auto t = std::make_shared<ast::type_node>(s);
+  t->name = get_next_param_name();
+  t->parameter = true;
+  return t;
+}
 
 
 
@@ -50,6 +71,7 @@ static presult parse_type(pstate s, scope *sc);
 
 
 
+
 static auto glob_term(pstate s) {
   while (s.first().type == tok_term) {
     s = s.next();
@@ -82,7 +104,6 @@ std::unique_ptr<ast::module> helion::parse_module(pstate s) {
       // after the end of the last parse_expr
       s = r.state;
       for (auto v : r.vals) {
-
         if (auto tn = std::dynamic_pointer_cast<ast::typedef_node>(v); tn) {
           mod->typedefs.push_back(tn);
         } else if (auto tn = std::dynamic_pointer_cast<ast::def>(v); tn) {
@@ -625,24 +646,36 @@ static presult parse_do(pstate s, scope *sc) {
 }
 
 
+
+
+
 /**
  * parse a type out into the special type representation.
  * This function absorbs the generic syntax as well
  */
 static presult parse_type(pstate s, scope *sc) {
   bool constant = false;
+  bool param = false;
+
+
+  if (s.first().type == tok_some) {
+    param = true;
+    s++;
+  }
+
 
   if (s.first().type == tok_const) {
     constant = true;
     s++;
   }
 
+
   // base case, actual type parsing
   if (s.first().type == tok_type) {
     auto type = make<ast::type_node>(sc);
     type->constant = constant;
     type->name = s.first().val;
-
+    type->parameter = param;
 
     s++;
 
@@ -696,7 +729,7 @@ static presult parse_type(pstate s, scope *sc) {
     auto type = make<ast::type_node>(sc);
     type->name = "Slice";
     type->constant = constant;
-    type->type = ast::type_node::type_node_type::SLICE_TYPE;
+    type->style = type_style::SLICE;
     type->params.push_back(tr.as<ast::type_node>());
 
     return presult(type, s);
@@ -704,12 +737,21 @@ static presult parse_type(pstate s, scope *sc) {
 
   if (constant) {
     auto type = make<ast::type_node>(sc);
-    type->known = false;
     type->constant = constant;
     return presult(type, s);
   }
 
   return pfail(s);
+}
+
+
+std::shared_ptr<ast::type_node> ast::parse_type(text src) {
+
+  auto t = make<tokenizer>(src, "");
+  pstate state(t, 0);
+  scope s;
+  auto res = ::parse_type(state, &s);
+  return res.as<ast::type_node>();
 }
 
 
@@ -751,14 +793,13 @@ static presult parse_prototype(pstate s, scope *sc) {
       atype = tres.as<ast::type_node>();
       s = tres;
     } else {
-      auto rt = std::make_shared<ast::type_node>(sc);
-      rt->known = false;
-      atype = rt;
+      atype = get_next_param_type(sc);
     }
 
     if (s.first().type != tok_var) {
       return pfail(s);
     }
+
 
     text name = s.first().val;
     s++;
@@ -794,15 +835,7 @@ static presult parse_prototype(pstate s, scope *sc) {
     if (ret) {
       s = ret;
       proto->return_type = ret.as<ast::type_node>();
-    } else {
-      auto rt = std::make_shared<ast::type_node>(sc);
-      rt->known = false;
-      proto->return_type = rt;
     }
-  } else {
-    auto rt = std::make_shared<ast::type_node>(sc);
-    rt->known = false;
-    proto->return_type = rt;
   }
 
   for (auto a : proto->args) {
@@ -1078,8 +1111,7 @@ static presult parse_let(pstate s, scope *sc) {
     decl->type = tp.as<ast::type_node>();
     s = tp;
   } else {
-    decl->type = std::make_shared<ast::type_node>(sc);
-    decl->type->known = false;
+    decl->type = get_next_param_type(sc);
   }
 
   if (s.first().type != tok_var) {
