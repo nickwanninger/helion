@@ -405,7 +405,7 @@ namespace helion {
 
 
   class module {
-    module *parent = nullptr;
+    // module *parent = nullptr;
     text name;
     std::map<std::string, std::unique_ptr<global_variable>> globals;
 

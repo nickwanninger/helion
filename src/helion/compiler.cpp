@@ -287,7 +287,7 @@ void helion::compile_module(std::unique_ptr<ast::module> m) {
 
   std::string name = "a";
 
-  auto gvar_ptr_abc = new llvm::GlobalVariable(
+  (void)new llvm::GlobalVariable(
       *mod, llt, false, llvm::GlobalValue::CommonLinkage, 0, "abc");
   mod->print(llvm::errs(), nullptr);
 
@@ -618,11 +618,11 @@ helion::pattern_match_error::pattern_match_error(ast::type_node &n,
 
 
 
-
 global_variable *module::find(std::string s) {
   if (globals.count(s) == 0) return nullptr;
   return globals.at(s).get();
 }
+
 
 void *module::global_create(std::string name, datatype *type) {
   auto llt = type->to_llvm();

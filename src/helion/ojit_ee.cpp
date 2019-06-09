@@ -17,8 +17,7 @@ ojit_ee::ojit_ee(llvm::TargetMachine& TM)
           exec_session,
           [this](const std::string& name) {
             auto sym = find_symbol(name);
-            // auto sym = obj_layer.findSymbol(name, true);
-            auto v = llvm::cantFail(sym.getAddress(), "lookup failed");
+            llvm::cantFail(sym.getAddress(), "lookup failed");
             return sym;
           },
           [](llvm::Error err) {
