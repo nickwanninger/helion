@@ -13,9 +13,6 @@
 
 namespace helion {
 
-
-
-
   struct presult {
     using node_ptr = std::shared_ptr<ast::node>;
 

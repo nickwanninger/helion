@@ -1,11 +1,13 @@
 // [License]
 // MIT - See LICENSE.md file in the package.
 
+#include <dlfcn.h>
 #include <helion/ast.h>
 #include <helion/core.h>
 #include <helion/gc.h>
 #include <iostream>
 #include <unordered_map>
+
 using namespace helion;
 
 
@@ -22,14 +24,14 @@ ojit_ee *helion::execution_engine = nullptr;
 
 static std::unique_ptr<cg_scope> global_scope;
 
-llvm::Module *global_module;
-
-
 
 llvm::Function *allocate_function = nullptr;
 llvm::Function *deallocate_function = nullptr;
 
 
+
+
+static void init_llvm_env();
 
 
 namespace helion {
@@ -147,7 +149,21 @@ namespace helion {
 
 
 
-static void init_llvm_env(llvm::Module *);
+
+/**
+ * Functions can only reference functions in their own module, so we have to
+ * add declaration so the dyld linker can sort out the symbol linkages when
+ * we add the module to the execution_enviroment
+ */
+static llvm::Function *copy_function_declaration(llvm::Function &from,
+                                                 llvm::Module *to) {
+  auto fn = llvm::Function::Create(from.getFunctionType(),
+                                   llvm::Function::ExternalLinkage, 0,
+                                   from.getName(), to);
+  return fn;
+}
+
+
 
 
 static void setup_module(llvm::Module *m) {
@@ -162,7 +178,10 @@ static std::unique_ptr<llvm::Module> create_module(std::string name) {
 }
 
 
-static llvm::Module *init_llvm(void) {
+/**
+ * Initialize LLVM state
+ */
+static void init_llvm(void) {
   // init the LLVM global internal state
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
@@ -171,9 +190,8 @@ static llvm::Module *init_llvm(void) {
 
 
 
-  llvm::Module *m, *engine_module;
+  llvm::Module *engine_module;
   engine_module = new llvm::Module("helion", llvm_ctx);
-  m = new llvm::Module("helion", llvm_ctx);
   llvm::TargetOptions options = llvm::TargetOptions();
 
   // options.PrintMachineCode = true;
@@ -193,20 +211,15 @@ static llvm::Module *init_llvm(void) {
   execution_engine = new ojit_ee(*target_machine);
 
   data_layout = execution_engine->getDataLayout();
-
-  setup_module(engine_module);
-  setup_module(m);
-  return m;
 }
 
 
 
 
 void helion::init_codegen(void) {
-  llvm::Module *m = init_llvm();
-  init_llvm_env(m);
+  init_llvm();
+  init_llvm_env();
 
-  global_module = m;
 
   global_scope = std::make_unique<cg_scope>();
 
@@ -223,7 +236,10 @@ void helion::init_codegen(void) {
 // in the runtime of the JIT. This means creating linkage to an allocation
 // function, a free function and many other kinds of needed runtime functions.
 // We also create the builtin types, like ints and other types
-static void init_llvm_env(llvm::Module *m) {
+static void init_llvm_env() {
+  auto mem_mod = create_module("memory_management");
+
+
   {
     // create a linkage to the allocation function.
     // Sig = i8* allocate(i32);
@@ -231,10 +247,10 @@ static void init_llvm_env(llvm::Module *m) {
     args.push_back(int32_type->to_llvm());
     auto return_type = llvm::Type::getInt8PtrTy(llvm_ctx, 0);
     auto typ = llvm::FunctionType::get(return_type, args, false);
-    allocate_function = llvm::Function::Create(
-        typ, llvm::Function::ExternalLinkage, 0, "allocate", global_module);
+    allocate_function =
+        llvm::Function::Create(typ, llvm::Function::ExternalLinkage, 0,
+                               "helion_allocate", mem_mod.get());
   }
-
 
   {
     // create a linkage to the deallocate function
@@ -242,32 +258,13 @@ static void init_llvm_env(llvm::Module *m) {
     std::vector<llvm::Type *> args = {llvm::Type::getInt8PtrTy(llvm_ctx, 0)};
     auto typ =
         llvm::FunctionType::get(llvm::Type::getVoidTy(llvm_ctx), args, false);
-    deallocate_function = llvm::Function::Create(
-        typ, llvm::Function::ExternalLinkage, 0, "deallocate", global_module);
+    deallocate_function =
+        llvm::Function::Create(typ, llvm::Function::ExternalLinkage, 0,
+                               "helion_deallocate", mem_mod.get());
   }
+
+  execution_engine->add_module(std::move(mem_mod));
 }
-
-
-std::unordered_map<std::string, llvm::Module *> module_for_fname;
-
-
-// this takes ownership of a module after code emission is complete
-// and will add it to the execution engine when required (by
-// jl_finalize_function)
-/*
-static void finalize_module(llvm::Module *m, bool shadow) {
-  // record the function names that are part of this Module
-  // so it can be added to the JIT when needed
-  for (llvm::Module::iterator I = m->begin(), E = m->end(); I != E; ++I) {
-    llvm::Function *F = &*I;
-    if (!F->isDeclaration()) {
-      module_for_fname[F->getName()] = m;
-    }
-  }
-  // in the newer JITs, the shadow module is separate from the execution module
-  // if (shadow) jl_add_to_shadow(m);
-}
-*/
 
 
 static datatype *declare_type(std::shared_ptr<ast::typedef_node>, cg_scope *);
@@ -277,23 +274,26 @@ void helion::compile_module(std::unique_ptr<ast::module> m) {
   for (auto t : m->typedefs) declare_type(t, global_scope.get());
 
 
-  try {
-    auto dt = global_scope->find_type("Node");
-    datatype *spec = specialize(dt, {int32_type}, global_scope.get());
-
-    auto pmt = ast::parse_type("some V{some T}");
 
 
+  auto llt = specialize(global_scope->find_type("Node"), {int32_type},
+                        global_scope.get())
+                 ->to_llvm();
 
-    pattern_match(pmt, spec, global_scope.get());
-  } catch (pattern_match_error &e) {
-    die(e.what());
-  }
+  llt->print(llvm::errs());
+
+  auto mod = create_module("test");
 
 
+  std::string name = "a";
+
+  auto gvar_ptr_abc = new llvm::GlobalVariable(
+      *mod, llt, false, llvm::GlobalValue::CommonLinkage, 0, "abc");
+  mod->print(llvm::errs(), nullptr);
+
+  /*
   {
     cg_ctx ctx(llvm_ctx);
-
     auto mod = create_module("add_module");
 
     std::string name = "add";
@@ -305,35 +305,72 @@ void helion::compile_module(std::unique_ptr<ast::module> m) {
     ctx.func = llvm::Function::Create(typ, llvm::Function::ExternalLinkage, 0,
                                       name, mod.get());
 
+    std::vector<llvm::Value *> args;
+    for (auto &arg : ctx.func->args()) {
+      args.push_back(&arg);
+    }
+
 
     // Create a new basic block to start insertion into.
     llvm::BasicBlock *BB =
         llvm::BasicBlock::Create(llvm_ctx, "entry", ctx.func);
     ctx.builder.SetInsertPoint(BB);
 
-    auto val = llvm::ConstantInt::get(llvm_ctx, llvm::APInt(32, 1, true));
 
-    ctx.builder.CreateRet(val);
+    auto add_res = ctx.builder.CreateAdd(args[0], args[1]);
+
+
+    ctx.builder.CreateRet(add_res);
+
+    verifyFunction(*ctx.func);
+    execution_engine->add_module(std::move(mod));
+  }
+
+  {
+    cg_ctx ctx(llvm_ctx);
+    auto mod = create_module("use_module");
+
+    std::string name = "use";
+    // create a linkage to the allocation function.
+    // Sig = i8* allocate(i32);
+    auto int_type = int32_type->to_llvm();
+    auto typ = llvm::FunctionType::get(int_type, {int_type, int_type}, false);
+
+
+    auto add_func = llvm::Function::Create(typ, llvm::Function::ExternalLinkage,
+                                           0, "add", mod.get());
+
+    ctx.func = llvm::Function::Create(typ, llvm::Function::ExternalLinkage, 0,
+                                      name, mod.get());
+
+
+    std::vector<llvm::Value *> args;
+    for (auto &arg : ctx.func->args()) {
+      args.push_back(&arg);
+    }
+
+    // Create a new basic block to start insertion into.
+    llvm::BasicBlock *BB =
+        llvm::BasicBlock::Create(llvm_ctx, "entry", ctx.func);
+    ctx.builder.SetInsertPoint(BB);
+
+
+    auto call = ctx.builder.CreateCall(add_func, args, "res");
+
+
+    ctx.builder.CreateRet(call);
 
     verifyFunction(*ctx.func);
 
 
     mod->print(llvm::errs(), nullptr);
 
-
     execution_engine->add_module(std::move(mod));
-    auto symbol = execution_engine->find_symbol("add");
-    auto addr = llvm::cantFail(symbol.getAddress());
-    puts(addr);
+    auto addr = execution_engine->get_function_address(name);
     auto func = reinterpret_cast<int (*)(int, int)>(addr);
-    printf("%p\n", func);
     printf("%d\n", func(1, 2));
   }
-
-
-  puts(global_scope->str());
-
-  global_module->print(llvm::errs(), nullptr);
+  */
 }
 
 

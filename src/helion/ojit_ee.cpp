@@ -1,6 +1,7 @@
 // [License]
 // MIT - See LICENSE.md file in the package.
 
+#include <dlfcn.h>
 #include <helion/core.h>
 #include <helion/util.h>
 #include <iostream>
@@ -15,7 +16,10 @@ ojit_ee::ojit_ee(llvm::TargetMachine& TM)
       symbol_resolver(createLegacyLookupResolver(
           exec_session,
           [this](const std::string& name) {
-            return obj_layer.findSymbol(name, true);
+            auto sym = find_symbol(name);
+            // auto sym = obj_layer.findSymbol(name, true);
+            auto v = llvm::cantFail(sym.getAddress(), "lookup failed");
+            return sym;
           },
           [](llvm::Error err) {
             cantFail(std::move(err), "lookupFlags failed");
@@ -43,6 +47,19 @@ const llvm::Triple& ojit_ee::getTargetTriple() const {
 }
 
 
+
+void* ojit_ee::get_function_address(std::string name) {
+  auto symbol = find_symbol(name);
+  uint64_t addr = 0;
+  auto sinfo = symbol.getAddress();
+  if (sinfo) {
+    addr = std::move(*sinfo);
+  } else {
+    die("unable to find function address for symbol", name);
+  }
+  return reinterpret_cast<void*>(addr);
+}
+
 void ojit_ee::add_global_mapping(llvm::StringRef name, uint64_t addr) {
   bool successful =
       GlobalSymbolTable.insert(std::make_pair(name, (void*)addr)).second;
@@ -58,7 +75,6 @@ llvm::JITSymbol ojit_ee::find_mangled_symbol(const std::string& name,
   // This is the opposite of the usual search order for dlsym, but makes more
   // sense in a REPL where we want to bind to the newest available definition.
   for (auto H : llvm::make_range(module_keys.rbegin(), module_keys.rend())) {
-    puts(name);
     auto sym = compile_layer.findSymbolIn(H, name, ExportedSymbolsOnly);
     if (sym) {
       return sym;
@@ -68,6 +84,15 @@ llvm::JITSymbol ojit_ee::find_mangled_symbol(const std::string& name,
   // If we can't find the symbol in the JIT, try looking in the host process.
   if (auto SymAddr = llvm::RTDyldMemoryManager::getSymbolAddressInProcess(name))
     return llvm::JITSymbol(SymAddr, llvm::JITSymbolFlags::Exported);
+
+
+  // look through the dlhandles list
+  for (auto& h : dlhandles) {
+    auto ptr = dlsym(h, name.c_str());
+    if (ptr != nullptr) {
+      return llvm::JITSymbol((int64_t)ptr, llvm::JITSymbolFlags::Exported);
+    }
+  }
 
 #ifdef _WIN32
   // For Windows retry without "_" at beginning, as RTDyldMemoryManager uses
@@ -92,21 +117,27 @@ ojit_ee::ModuleHandle ojit_ee::add_module(std::unique_ptr<llvm::Module> m) {
 }
 
 
-
-std::unique_ptr<llvm::Module> ojit_ee::opt_module(std::unique_ptr<llvm::Module> M) {
-  // Create a function pass manager.
-  auto FPM = llvm::make_unique<llvm::legacy::FunctionPassManager>(M.get());
+// Optimize a module and all it's functions
+std::unique_ptr<llvm::Module> ojit_ee::opt_module(
+    std::unique_ptr<llvm::Module> M) {
+  // Create a pass mananger
+  auto pm = llvm::legacy::FunctionPassManager(M.get());
 
   // Add some optimizations.
-  FPM->add(llvm::createInstructionCombiningPass());
-  FPM->add(llvm::createReassociatePass());
-  FPM->add(llvm::createGVNPass());
-  FPM->add(llvm::createCFGSimplificationPass());
-  FPM->doInitialization();
+  pm.add(llvm::createInstructionCombiningPass());
+  pm.add(llvm::createReassociatePass());
+  pm.add(llvm::createGVNPass());
+  pm.add(llvm::createCFGSimplificationPass());
+  pm.add(llvm::createLoopVectorizePass());
+  pm.add(llvm::createSLPVectorizerPass());
+
+  pm.add(llvm::createPartiallyInlineLibCallsPass());
+
+  pm.doInitialization();
 
   // Run the optimizations over all functions in the module being added to
   // the JIT.
-  for (auto& F : *M) FPM->run(F);
+  for (auto& F : *M) pm.run(F);
 
   return M;
 }

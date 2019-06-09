@@ -1,8 +1,19 @@
+
+
 type Node{T}
-	T payload
+	T val
 	Node{T} next
 end
 
+# generic function, generic on both arguments
+def add a, b
+	return a + b
+end
 
-let global add = (a, b) -> a + b
 
+let Fn{some A, some B : some C} func;
+
+
+def map(Fn{some T : some V} fn, [T] list) : [V]
+	# do map
+end

@@ -244,10 +244,31 @@ text ast::type_node::str(int) {
 
   if (style == type_style::METHOD) {
     assert(params.size() > 0);
-    s += "(";
+    s += "Fn{";
 
-    s += ")";
+    for (size_t i = 1; i < params.size(); i++) {
+      auto& param = params[i];
+      s += param->str();
+      if (i < params.size() - 1) {
+        s += ", ";
+      }
+    }
+
+    if (params[0] != nullptr) {
+      s += " : ";
+      s += params[0]->str();
+    }
+    s += "}";
   }
+
+
+
+  if (style == type_style::OPTIONAL) {
+    s += params[0]->str();
+    s += "?";
+  }
+
+
   return s;
 }
 
@@ -266,11 +287,9 @@ text ast::prototype::str(int) {
   }
   s += ")";
 
-
-
-  if (return_type != nullptr) {
+  if (type->params[0] != nullptr) {
     s += " : ";
-    s += return_type->str();
+    s += type->params[0]->str();
   }
   return s;
 }

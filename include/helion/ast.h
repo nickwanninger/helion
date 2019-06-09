@@ -213,12 +213,18 @@ namespace helion {
       NODE_FOOTER;
     };
 
+
+
+
     // represents the prototype of a function. Types can be derived from this
     class prototype : public node {
      public:
       std::vector<std::shared_ptr<var_decl>> args;
 
-      rc<type_node> return_type;
+
+      std::shared_ptr<type_node> type;
+
+      // rc<type_node> return_type;
 
       NODE_FOOTER;
     };

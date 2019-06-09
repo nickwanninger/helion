@@ -37,11 +37,10 @@
 
 #include "llvm/ExecutionEngine/Orc/IRTransformLayer.h"
 
-#include "llvm/Support/DynamicLibrary.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Target/TargetMachine.h"
 
-#include <mutex>
+
+#include <memory>
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
@@ -50,7 +49,14 @@
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "llvm/IRReader/IRReader.h"
+#include "llvm/Support/DynamicLibrary.h"
+#include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetMachine.h"
 
+#include <flat_hash_map.hpp>
+#include <mutex>
 
 #include <helion/text.h>
 
@@ -100,10 +106,11 @@ namespace helion {
     FLOATING,  // is an n bit floating point number
     UNION,     // is a union of the parameters
     TUPLE,
-    METHOD,  // first parameter is the return type, then each other parameter
-             // is an argument
-    SLICE,   // the first parameter is the type of the slice. Only one param
-             // allowed
+    METHOD,    // first parameter is the return type, then each other parameter
+               // is an argument
+    SLICE,     // the first parameter is the type of the slice. Only one param
+               // allowed
+    OPTIONAL,  // first param is the type it is an optional of
   };
 
 
@@ -237,14 +244,27 @@ namespace helion {
   // check if two types are
   bool subtype(datatype *A, datatype *B);
 
-  struct method_sig {
+
+  /**
+   * A method signature represents the type of a signature at runtime. It is
+   * used to represent return types and argument types. Each method_signature is
+   * stored and owned by a static map in `method.cpp`, and method signatures are
+   * handled by an int64. The reason for this abstraction is because at runtime,
+   * there needs to be efficient lookup of these method signatures in methods
+   * because lambdas should have specializations compiled at runtime as they are
+   * needed. This is not really a problem for top level defs, as we can
+   * statically determine this information
+   */
+  struct method_signature {
     datatype *return_type;
+    std::vector<datatype *> arguments;
   };
 
   class method_instance;
 
   class method {
    public:
+    using sig_handle = int64_t;
     cg_scope *scope;
     std::string name;
     std::string file;
@@ -254,25 +274,27 @@ namespace helion {
 
     static method *create(std::shared_ptr<ast::def> &);
     static method *create(std::shared_ptr<ast::func> &, cg_scope *);
+
+
+    // a simple list of the ast nodes that define entry points to this method
+    // for example, if a function is defined more than once, each of the
+    // overloads go into this vector. When an implementation is needed at
+    // compile time, the compiler will go through this list to find a best-fit.
+    // Unfortunately, this means there could be ambiguity in choosing a method.
+    std::vector<std::shared_ptr<ast::func>> definitions;
+
+   private:
+    std::mutex lock;
+    // the
+    ska::flat_hash_map<method::sig_handle, method_instance *> instances;
   };
+
 
   class method_instance {
    public:
     // what method is this an instance of?
     method *of;
   };
-
-  // This type represents an executable operation
-  struct code_instance {
-    // the defining method instance
-    method_instance *def;
-    llvm::Function *llvm_func;
-
-    datatype *return_type;
-    std::vector<datatype *> arg_types;
-  };
-
-
 
 
   using RTDyldObjHandleT = llvm::orc::VModuleKey;
@@ -314,6 +336,10 @@ namespace helion {
       return DL.getTypeAllocSize(t);
     }
 
+    void *get_function_address(std::string);
+
+    inline void add_dlhandle(void *h) { dlhandles.push_back(h); }
+
    private:
     inline std::string mangle(const std::string &Name) {
       std::string MangledName;
@@ -331,11 +357,6 @@ namespace helion {
 
     llvm::JITSymbol find_mangled_symbol(const std::string &Name,
                                         bool ExportedSymbolsOnly = false);
-    /*
-    std::string getMangledName(const std::string &Name);
-    std::string getMangledName(const GlobalValue *GV);
-    */
-
     llvm::TargetMachine &TM;
     const llvm::DataLayout DL;
     // Should be big enough that in the common case, The
@@ -356,6 +377,8 @@ namespace helion {
     SymbolTableT GlobalSymbolTable;
     SymbolTableT LocalSymbolTable;
     std::vector<ModuleHandle> module_keys;
+
+    std::vector<void *> dlhandles;
   };
 
 

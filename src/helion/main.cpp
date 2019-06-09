@@ -5,6 +5,7 @@
 #include <helion.h>
 #include <stdio.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <uv.h>
 #include <chrono>
 #include <iostream>
@@ -13,21 +14,15 @@
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
-#include <sys/stat.h>
 
 #define GC_THREADS
 #include <gc/gc.h>
 
-#include <dlfcn.h>
-
-#define PULL_LLVM
 #include <helion/core.h>
-
 #include <CLI11.hpp>
 
 using namespace helion;
 using namespace std::string_literals;
-
 
 extern "C" void GC_allow_register_threads();
 
@@ -51,14 +46,9 @@ int main(int argc, char **argv) {
   // start the garbage collector
   GC_INIT();
   GC_allow_register_threads();
-
-
-
   helion::init();
 
-
   const char *ep_ptr = entry_point.c_str();
-
 
   // check that the file exists before trying to read it
   struct stat sinfo;
@@ -73,7 +63,7 @@ int main(int argc, char **argv) {
 
   try {
     auto res = parse_module(src, entry_point);
-    // puts(res->str());
+    puts(res->str());
     compile_module(std::move(res));
   } catch (syntax_error &e) {
     puts(e.what());

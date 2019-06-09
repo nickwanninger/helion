@@ -60,6 +60,7 @@ tokens = [
     "comma",
     "comment",
     "end",
+    "question",
 ]
 
 

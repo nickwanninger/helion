@@ -25,7 +25,6 @@ void helion::init_types(void) {
   any_type = &datatype::create("Any");
   int32_type = &datatype::create_integer("Int", 32);
   float32_type = &datatype::create_float("Float", 32);
-
 }
 
 // line for line implementation of the subtype algorithm from the julia paper.
@@ -107,8 +106,7 @@ text datatype::str() {
     s += ti->name;
     return s;
   } else if (ti->style == type_style::OBJECT ||
-             ti->style == type_style::TUPLE ||
-             ti->style == type_style::UNION) {
+             ti->style == type_style::TUPLE || ti->style == type_style::UNION) {
     if (ti->style == type_style::OBJECT) s += ti->name;
     if (ti->style == type_style::TUPLE) s += "Tuple";
     if (ti->style == type_style::UNION) s += "Union";
@@ -136,6 +134,25 @@ text datatype::str() {
       }
     }
 
+  } else if (ti->style == type_style::METHOD) {
+    s += "Fn{";
+    if (specialized) {
+      for (size_t i = 1; i < param_types.size(); i++) {
+        auto &param = param_types[i];
+        s += param->str();
+        if (i < param_types.size() - 1) {
+          s += ", ";
+        }
+      }
+
+      if (param_types[0] != nullptr) {
+        s += " : ";
+        s += param_types[0]->str();
+      }
+    } else {
+      s += "UNKNOWN, UNEXPECTED UNSPECIALIZED METHOD TYPE";
+    }
+    s += "}";
   } else {
     s += "";
   }
@@ -204,11 +221,10 @@ llvm::Type *datatype::to_llvm(void) {
       throw std::logic_error("Floats must be 32 or 64 bit");
     }
   } else if (ti->style == type_style::OBJECT) {
-
     std::string s = str();
-    puts("creating struct");
     auto stct = llvm::StructType::create(llvm_ctx, s);
-    type_decl = llvm::PointerType::get(stct, 0);
+    type_decl = stct;
+
 
     std::string tname = str();
     std::vector<llvm::Type *> flds;
@@ -217,12 +233,17 @@ llvm::Type *datatype::to_llvm(void) {
     auto vd = llvm::Type::getInt8PtrTy(llvm_ctx);
     flds.push_back(vd);
 
+    flds.push_back(any_type->to_llvm());
     // TODO(superclass): Add in superclass fields here.
     for (auto &f : fields) {
-      flds.push_back(f.type->to_llvm());
+      llvm::Type *field = f.type->to_llvm();
+      if (f.type->ti->style == type_style::OBJECT) {
+        field = field->getPointerTo();
+      }
+      flds.push_back(field);
     }
 
-    stct->setBody(flds);
+    stct->setBody(flds, true);
   }
 
   return type_decl;

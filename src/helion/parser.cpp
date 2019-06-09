@@ -10,8 +10,6 @@
 
 
 
-
-
 using namespace helion;
 
 
@@ -25,7 +23,7 @@ static text get_next_param_name(void) {
 }
 
 
-static std::shared_ptr<ast::type_node> get_next_param_type(scope * s) {
+static std::shared_ptr<ast::type_node> get_next_param_type(scope *s) {
   auto t = std::make_shared<ast::type_node>(s);
   t->name = get_next_param_name();
   t->parameter = true;
@@ -648,7 +646,6 @@ static presult parse_do(pstate s, scope *sc) {
 
 
 
-
 /**
  * parse a type out into the special type representation.
  * This function absorbs the generic syntax as well
@@ -669,20 +666,33 @@ static presult parse_type(pstate s, scope *sc) {
     s++;
   }
 
+  std::shared_ptr<ast::type_node> type;
+
+
+
+  auto open = tok_left_curly;
+  auto close = tok_right_curly;
 
   // base case, actual type parsing
   if (s.first().type == tok_type) {
-    auto type = make<ast::type_node>(sc);
-    type->constant = constant;
-    type->name = s.first().val;
-    type->parameter = param;
+    if (s.first().val == "Fn") {
+      // parse method type
+      type = make<ast::type_node>(sc);
+      type->constant = constant;
+      type->name = s.first().val;
+      type->style = type_style::METHOD;
+      type->parameter = param;
+      if (param)
+        throw syntax_error(s, "cannot parameterize for some method type");
+      if (constant)
+        throw syntax_error(
+            s, "methods are implicitly constant. No need for `const` keyword");
 
-    s++;
-
-    auto open = tok_left_curly;
-    auto close = tok_right_curly;
-
-    if (s.first().type == open) {
+      s++;
+      std::shared_ptr<ast::type_node> return_type = nullptr;
+      std::vector<std::shared_ptr<ast::type_node>> types;
+      if (s.first().type != open)
+        throw syntax_error(s, "method type requires parameter information");
       // skip the open token
       s++;
       // normal comma separated list parsing...
@@ -690,23 +700,67 @@ static presult parse_type(pstate s, scope *sc) {
         if (s.first().type == close) {
           break;
         }
-
+        if (s.first().type == tok_colon) {
+          s++;
+          auto ret_res = parse_type(s, sc);
+          if (!ret_res)
+            throw syntax_error(s,
+                               "invalid return type parameter in method type");
+          s = ret_res;
+          return_type = ret_res.as<ast::type_node>();
+          if (s.first().type != close)
+            throw syntax_error(s, "unexpected token");
+          break;
+        }
         auto param_res = parse_type(s, sc);
         if (!param_res) throw syntax_error(s, "invalid type parameter");
-
         s = param_res;
-
         auto T = param_res.as<ast::type_node>();
-        type->params.push_back(T);
+        types.push_back(T);
         if (s.first().type == tok_comma) {
           s++;
           continue;
         }
       }
       s++;
-    }
+      type->params.push_back(return_type);
+      for (auto &t : types) type->params.push_back(t);
+      goto FINALIZE;
+    } else {
+      type = make<ast::type_node>(sc);
+      type->constant = constant;
+      type->name = s.first().val;
+      type->parameter = param;
 
-    return presult(type, s);
+      s++;
+
+
+      if (s.first().type == open) {
+        // skip the open token
+        s++;
+        // normal comma separated list parsing...
+        while (true) {
+          if (s.first().type == close) {
+            break;
+          }
+
+          auto param_res = parse_type(s, sc);
+          if (!param_res) throw syntax_error(s, "invalid type parameter");
+
+          s = param_res;
+
+          auto T = param_res.as<ast::type_node>();
+          type->params.push_back(T);
+          if (s.first().type == tok_comma) {
+            s++;
+            continue;
+          }
+        }
+        s++;
+      }
+
+      goto FINALIZE;
+    }
   }
 
   if (s.first().type == tok_left_square) {
@@ -726,27 +780,41 @@ static presult parse_type(pstate s, scope *sc) {
 
     s++;
 
-    auto type = make<ast::type_node>(sc);
+    type = make<ast::type_node>(sc);
     type->name = "Slice";
     type->constant = constant;
     type->style = type_style::SLICE;
     type->params.push_back(tr.as<ast::type_node>());
 
-    return presult(type, s);
+    goto FINALIZE;
   }
 
   if (constant) {
-    auto type = make<ast::type_node>(sc);
+    type = make<ast::type_node>(sc);
     type->constant = constant;
-    return presult(type, s);
+    goto FINALIZE;
   }
 
   return pfail(s);
+FINALIZE:
+
+
+  // absorb optional question marks
+  if (s.first().type == tok_question) {
+
+    throw syntax_error(s, "optional types not supported currently");
+    auto opt = std::make_shared<ast::type_node>(sc);
+    opt->style = type_style::OPTIONAL;
+    opt->params.push_back(type);
+    type = opt;
+    s++;
+  }
+
+  return presult(type, s);
 }
 
 
 std::shared_ptr<ast::type_node> ast::parse_type(text src) {
-
   auto t = make<tokenizer>(src, "");
   pstate state(t, 0);
   scope s;
@@ -774,6 +842,9 @@ static presult parse_prototype(pstate s, scope *sc) {
 
   auto proto = make<ast::prototype>(sc);
 
+  std::shared_ptr<ast::type_node> return_type = nullptr;
+  std::vector<std::shared_ptr<ast::type_node>> argument_types;
+
   while (true) {
     if (s.first().type == tok_term) {
       break;
@@ -796,6 +867,8 @@ static presult parse_prototype(pstate s, scope *sc) {
       atype = get_next_param_type(sc);
     }
 
+
+
     if (s.first().type != tok_var) {
       return pfail(s);
     }
@@ -804,6 +877,7 @@ static presult parse_prototype(pstate s, scope *sc) {
     text name = s.first().val;
     s++;
 
+    argument_types.push_back(atype);
 
     auto a = make<ast::var_decl>(sc);
 
@@ -834,13 +908,24 @@ static presult parse_prototype(pstate s, scope *sc) {
     auto ret = parse_type(s, sc);
     if (ret) {
       s = ret;
-      proto->return_type = ret.as<ast::type_node>();
+      return_type = ret.as<ast::type_node>();
     }
   }
 
   for (auto a : proto->args) {
     sc->bind(a->name, a);
   }
+
+
+  auto ftype = std::make_shared<ast::type_node>(sc);
+
+  ftype->params.push_back(return_type);
+  for (auto &p : argument_types) {
+    ftype->params.push_back(p);
+  }
+  ftype->style = type_style::METHOD;
+
+  proto->type = ftype;
 
   return presult(proto, s);
 }
@@ -1111,8 +1196,6 @@ static presult parse_let(pstate s, scope *sc) {
 
   // attempt to parse a type
   auto tp = parse_type(s, sc);
-
-
 
 
 
