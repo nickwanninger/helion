@@ -244,6 +244,25 @@ llvm::Type *datatype::to_llvm(void) {
     }
 
     stct->setBody(flds, true);
+  } else if (ti->style == type_style::SLICE) {
+    std::string s = str();
+    auto stct = llvm::StructType::create(llvm_ctx, s);
+
+    std::vector<llvm::Type *> flds;
+
+    flds.push_back(llvm::Type::getInt32Ty(llvm_ctx));
+    flds.push_back(llvm::Type::getInt32Ty(llvm_ctx));
+
+    for (auto &f : fields) {
+      llvm::Type *field = f.type->to_llvm();
+      if (f.type->ti->style == type_style::OBJECT) {
+        field = field->getPointerTo();
+      }
+      flds.push_back(field->getPointerTo());
+    }
+
+
+    type_decl = stct;
   }
 
   return type_decl;

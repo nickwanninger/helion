@@ -291,86 +291,6 @@ void helion::compile_module(std::unique_ptr<ast::module> m) {
       *mod, llt, false, llvm::GlobalValue::CommonLinkage, 0, "abc");
   mod->print(llvm::errs(), nullptr);
 
-  /*
-  {
-    cg_ctx ctx(llvm_ctx);
-    auto mod = create_module("add_module");
-
-    std::string name = "add";
-    // create a linkage to the allocation function.
-    // Sig = i8* allocate(i32);
-    auto int_type = int32_type->to_llvm();
-    auto typ = llvm::FunctionType::get(int_type, {int_type, int_type}, false);
-
-    ctx.func = llvm::Function::Create(typ, llvm::Function::ExternalLinkage, 0,
-                                      name, mod.get());
-
-    std::vector<llvm::Value *> args;
-    for (auto &arg : ctx.func->args()) {
-      args.push_back(&arg);
-    }
-
-
-    // Create a new basic block to start insertion into.
-    llvm::BasicBlock *BB =
-        llvm::BasicBlock::Create(llvm_ctx, "entry", ctx.func);
-    ctx.builder.SetInsertPoint(BB);
-
-
-    auto add_res = ctx.builder.CreateAdd(args[0], args[1]);
-
-
-    ctx.builder.CreateRet(add_res);
-
-    verifyFunction(*ctx.func);
-    execution_engine->add_module(std::move(mod));
-  }
-
-  {
-    cg_ctx ctx(llvm_ctx);
-    auto mod = create_module("use_module");
-
-    std::string name = "use";
-    // create a linkage to the allocation function.
-    // Sig = i8* allocate(i32);
-    auto int_type = int32_type->to_llvm();
-    auto typ = llvm::FunctionType::get(int_type, {int_type, int_type}, false);
-
-
-    auto add_func = llvm::Function::Create(typ, llvm::Function::ExternalLinkage,
-                                           0, "add", mod.get());
-
-    ctx.func = llvm::Function::Create(typ, llvm::Function::ExternalLinkage, 0,
-                                      name, mod.get());
-
-
-    std::vector<llvm::Value *> args;
-    for (auto &arg : ctx.func->args()) {
-      args.push_back(&arg);
-    }
-
-    // Create a new basic block to start insertion into.
-    llvm::BasicBlock *BB =
-        llvm::BasicBlock::Create(llvm_ctx, "entry", ctx.func);
-    ctx.builder.SetInsertPoint(BB);
-
-
-    auto call = ctx.builder.CreateCall(add_func, args, "res");
-
-
-    ctx.builder.CreateRet(call);
-
-    verifyFunction(*ctx.func);
-
-
-    mod->print(llvm::errs(), nullptr);
-
-    execution_engine->add_module(std::move(mod));
-    auto addr = execution_engine->get_function_address(name);
-    auto func = reinterpret_cast<int (*)(int, int)>(addr);
-    printf("%d\n", func(1, 2));
-  }
-  */
 }
 
 
@@ -678,9 +598,7 @@ void helion::pattern_match(std::shared_ptr<ast::type_node> &n, datatype *on,
   // match on it and it's parameters.
   if (n->style == type_style::OBJECT) {
     pattern_match_name(n.get(), on, s);
-  }
-
-  if (n->style == type_style::SLICE) {
+  } else if (n->style == type_style::SLICE) {
     pattern_match_slice(n.get(), on, s);
   }
 }

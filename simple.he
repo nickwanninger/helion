@@ -1,7 +1,7 @@
 
 
 type Node{T}
-	T val
+	[T] val
 	Node{T} next
 end
 

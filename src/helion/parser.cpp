@@ -781,7 +781,6 @@ static presult parse_type(pstate s, scope *sc) {
     s++;
 
     type = std::make_shared<ast::type_node>(sc);
-    type->name = "Slice";
     type->constant = constant;
     type->style = type_style::SLICE;
     type->params.push_back(tr.as<ast::type_node>());
@@ -1149,7 +1148,8 @@ static presult parse_typedef(pstate s, scope *sc) {
   s = glob_term(s);
 
   while (s.first().type != tok_end) {
-    if (s.first().type == tok_type) {
+    puts(s.first());
+    if (s.first().type == tok_type || s.first().type == tok_left_square) {
       auto typer = parse_type(s, sc);
       if (!typer)
         throw syntax_error(s, "failed to parse field type in type definition");
@@ -1168,8 +1168,10 @@ static presult parse_typedef(pstate s, scope *sc) {
       n->defs.push_back(defr.as<ast::def>());
       s = defr;
     } else {
+      std::string e = "unexpected token in type definition: ";
+      e += s.first().val;
       // if you get here, there's an invalid token in the type def
-      throw syntax_error(s, "unexpected token in type definition");
+      throw syntax_error(s, e);
     }
     s = glob_term(s);
   }
