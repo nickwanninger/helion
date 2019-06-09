@@ -461,7 +461,6 @@ datatype *helion::specialize(datatype *t, std::vector<datatype *> params,
   // short circuit and return it
   if (t->specialized) return t;
 
-
   // Step 3. Search through the specializations in the typeinfo and
   //         attempt to find an existing specialization
   for (auto &s : t->ti->specializations) {
@@ -511,9 +510,6 @@ method *method::create(std::shared_ptr<ast::def> &n) {
 method *method::create(std::shared_ptr<ast::func> &fn, cg_scope *scp) {
   auto m = std::make_unique<method>();
   auto mptr = m.get();
-
-
-
 
   method_table.push_back(std::move(m));
   return mptr;
@@ -594,6 +590,7 @@ void helion::pattern_match(std::shared_ptr<ast::type_node> &n, datatype *on,
   assert(on->specialized);
 
 
+
   // Determine the type of the node. If it is a plain type reference, pattern
   // match on it and it's parameters.
   if (n->style == type_style::OBJECT) {
@@ -604,6 +601,10 @@ void helion::pattern_match(std::shared_ptr<ast::type_node> &n, datatype *on,
 }
 
 
+
+/*
+ * constructor for the pattern_match_error exception type
+ */
 helion::pattern_match_error::pattern_match_error(ast::type_node &n,
                                                  datatype &with,
                                                  std::string msg) {
@@ -628,7 +629,6 @@ void *module::global_create(std::string name, datatype *type) {
   auto size = data_layout.getTypeAllocSize(llt);
   // allocate that memory using the garbage collector
   void *data = gc::alloc(size);
-
   auto glob = std::make_unique<global_variable>();
 
   glob->name = name;
