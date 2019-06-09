@@ -149,7 +149,7 @@ std::unique_ptr<ast::module> helion::parse_module(pstate s) {
  * wrapper that creates a state around text
  */
 std::unique_ptr<ast::module> helion::parse_module(text s, text pth) {
-  auto t = make<tokenizer>(s, pth);
+  auto t = std::make_shared<tokenizer>(s, pth);
   pstate state(t, 0);
   return parse_module(state);
 }
@@ -239,7 +239,7 @@ static presult expand_expression(presult r, scope *sc) {
       t = s;
       if (t.type == tok_var) {
         s++;
-        auto v = make<ast::dot>(sc);
+        auto v = std::make_shared<ast::dot>(sc);
         v->set_bounds(start_token, t);
         v->expr = expr;
         v->sub = t.val;
@@ -257,7 +257,7 @@ static presult expand_expression(presult r, scope *sc) {
         throw syntax_error(initial_state, "malformed function call");
       }
 
-      auto c = make<ast::call>(sc);
+      auto c = std::make_shared<ast::call>(sc);
       c->set_bounds(start_token, t);
       c->func = expr;
       c->args = res.vals;
@@ -269,7 +269,7 @@ static presult expand_expression(presult r, scope *sc) {
 
 
     if (t.type == tok_left_square) {
-      auto sub = make<ast::subscript>(sc);
+      auto sub = std::make_shared<ast::subscript>(sc);
       sub->expr = expr;
       s++;
       t = s;
@@ -333,7 +333,7 @@ static presult expand_expression(presult r, scope *sc) {
     }
   }
 
-  auto call = make<ast::call>(sc);
+  auto call = std::make_shared<ast::call>(sc);
   call->func = expr;
   call->args = args;
 
@@ -342,7 +342,7 @@ static presult expand_expression(presult r, scope *sc) {
 
 
 static presult parse_var(pstate s, scope *sc) {
-  auto v = make<ast::var>(sc);
+  auto v = std::make_shared<ast::var>(sc);
 
   std::string name = s.first().val;
   auto found = sc->find(name);
@@ -362,7 +362,7 @@ static presult parse_var(pstate s, scope *sc) {
 static presult parse_num(pstate s, scope *sc) {
   token t = s;
   std::string src = t.val;
-  auto node = make<ast::number>(sc);
+  auto node = std::make_shared<ast::number>(sc);
   node->set_bounds(t, t);
 
   // determine if the token is a float or not
@@ -391,7 +391,7 @@ static presult parse_num(pstate s, scope *sc) {
 
 
 static presult parse_str(pstate s, scope *sc) {
-  auto n = make<ast::string>(sc);
+  auto n = std::make_shared<ast::string>(sc);
   n->val = s.first().val;
   s++;
   return presult(n, s);
@@ -399,7 +399,7 @@ static presult parse_str(pstate s, scope *sc) {
 
 
 static presult parse_keyword(pstate s, scope *sc) {
-  auto n = make<ast::keyword>(sc);
+  auto n = std::make_shared<ast::keyword>(sc);
   n->val = s.first().val;
   s++;
   return presult(n, s);
@@ -408,7 +408,7 @@ static presult parse_keyword(pstate s, scope *sc) {
 
 
 static presult parse_nil(pstate s, scope *sc) {
-  auto n = make<ast::nil>(sc);
+  auto n = std::make_shared<ast::nil>(sc);
   s++;
   return presult(n, s);
 }
@@ -456,7 +456,7 @@ static presult parse_paren(pstate s, scope *sc) {
 
   rc<ast::node> n = nullptr;
   if (tuple) {
-    auto tup = make<ast::tuple>(sc);
+    auto tup = std::make_shared<ast::tuple>(sc);
     tup->vals = exprs;
     n = tup;
   } else {
@@ -538,7 +538,7 @@ static presult parse_binary_rhs(pstate s, scope *sc, int expr_prec,
     auto rhs = parse_expr(s);
 
     if (!rhs) throw syntax_error(s, "failed to parse rhs of assignment");
-    auto n = make<ast::binary_op>();
+    auto n = std::make_shared<ast::binary_op>();
     n->op = op;
     n->left = lhs;
     n->right = rhs;
@@ -587,7 +587,7 @@ static presult parse_binary_rhs(pstate s, scope *sc, int expr_prec,
 
     token end = s;
 
-    auto n = make<ast::binary_op>(sc);
+    auto n = std::make_shared<ast::binary_op>(sc);
 
     n->set_bounds(tok, end);
 
@@ -622,7 +622,7 @@ static presult parse_do(pstate s, scope *sc) {
 
   // skip over the tok_do...
   s++;
-  auto block = make<ast::do_block>(sc);
+  auto block = std::make_shared<ast::do_block>(sc);
 
   while (true) {
     s = glob_term(s);
@@ -677,7 +677,7 @@ static presult parse_type(pstate s, scope *sc) {
   if (s.first().type == tok_type) {
     if (s.first().val == "Fn") {
       // parse method type
-      type = make<ast::type_node>(sc);
+      type = std::make_shared<ast::type_node>(sc);
       type->constant = constant;
       type->name = s.first().val;
       type->style = type_style::METHOD;
@@ -727,7 +727,7 @@ static presult parse_type(pstate s, scope *sc) {
       for (auto &t : types) type->params.push_back(t);
       goto FINALIZE;
     } else {
-      type = make<ast::type_node>(sc);
+      type = std::make_shared<ast::type_node>(sc);
       type->constant = constant;
       type->name = s.first().val;
       type->parameter = param;
@@ -780,7 +780,7 @@ static presult parse_type(pstate s, scope *sc) {
 
     s++;
 
-    type = make<ast::type_node>(sc);
+    type = std::make_shared<ast::type_node>(sc);
     type->name = "Slice";
     type->constant = constant;
     type->style = type_style::SLICE;
@@ -790,7 +790,7 @@ static presult parse_type(pstate s, scope *sc) {
   }
 
   if (constant) {
-    type = make<ast::type_node>(sc);
+    type = std::make_shared<ast::type_node>(sc);
     type->constant = constant;
     goto FINALIZE;
   }
@@ -815,7 +815,7 @@ FINALIZE:
 
 
 std::shared_ptr<ast::type_node> ast::parse_type(text src) {
-  auto t = make<tokenizer>(src, "");
+  auto t = std::make_shared<tokenizer>(src, "");
   pstate state(t, 0);
   scope s;
   auto res = ::parse_type(state, &s);
@@ -840,7 +840,7 @@ static presult parse_prototype(pstate s, scope *sc) {
   if (expect_closing_paren) s++;
 
 
-  auto proto = make<ast::prototype>(sc);
+  auto proto = std::make_shared<ast::prototype>(sc);
 
   std::shared_ptr<ast::type_node> return_type = nullptr;
   std::vector<std::shared_ptr<ast::type_node>> argument_types;
@@ -879,7 +879,7 @@ static presult parse_prototype(pstate s, scope *sc) {
 
     argument_types.push_back(atype);
 
-    auto a = make<ast::var_decl>(sc);
+    auto a = std::make_shared<ast::var_decl>(sc);
 
     a->name = name;
     a->type = atype;
@@ -936,7 +936,7 @@ static presult parse_function_literal(pstate s, scope *sc) {
   pstate initial_state = s;
 
 
-  auto fn = make<ast::func>(sc);
+  auto fn = std::make_shared<ast::func>(sc);
 
   // enter a new scope
   sc = sc->spawn();
@@ -987,7 +987,7 @@ static presult parse_function_literal(pstate s, scope *sc) {
 static presult parse_return(pstate s, scope *sc) {
   s++;
 
-  auto ret = make<ast::return_node>(sc);
+  auto ret = std::make_shared<ast::return_node>(sc);
 
   if (s.first().type == tok_term) {
     return presult(ret, s);
@@ -1010,7 +1010,7 @@ static presult parse_if(pstate s, scope *sc) {
   // though the `else` block is handled differently, and has
   // no cond
   std::vector<ast::if_node::condition> conds;
-  auto n = make<ast::if_node>(sc);
+  auto n = std::make_shared<ast::if_node>(sc);
   auto start_token = s.first();
 
   while (s.first().type != tok_end) {
@@ -1060,7 +1060,7 @@ static presult parse_if(pstate s, scope *sc) {
 
 
 static presult parse_def(pstate s, scope *sc) {
-  auto n = make<ast::def>(sc);
+  auto n = std::make_shared<ast::def>(sc);
 
 
   auto start_token = s.first();
@@ -1124,7 +1124,7 @@ static presult parse_def(pstate s, scope *sc) {
 
 
 static presult parse_typedef(pstate s, scope *sc) {
-  auto n = make<ast::typedef_node>(sc);
+  auto n = std::make_shared<ast::typedef_node>(sc);
   auto start_state = s;
 
 
@@ -1183,7 +1183,7 @@ static presult parse_let(pstate s, scope *sc) {
   // skip tok_let
   s++;
 
-  auto decl = make<ast::var_decl>(sc);
+  auto decl = std::make_shared<ast::var_decl>(sc);
 
 
 

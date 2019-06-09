@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <memory>
 
 
 namespace helion {
@@ -24,7 +25,7 @@ namespace helion {
 
   template <class _Tp, class... _Args>
   auto make(_Args &&... __args) {
-    return rc<_Tp>::make_shared(_VSTD::forward<_Args>(__args)...);
+    return std::shared_ptr<_Tp>::make_shared(std::forward<_Args>(__args)...);
   }
 
   inline text read_file(char *filename) {
