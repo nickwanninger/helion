@@ -14,8 +14,8 @@ SET(CMAKE_ASM_FLAGS "${CFLAGS} -x assembler-with-cpp")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DBUILD_MODE=Debug -fno-omit-frame-pointer")
 set(CMAKE_C_FLAGS_DEBUG "-g -O0 -DBUILD_MODE=Debug -fno-omit-frame-pointer")
 
-set(CMAKE_CXX_FLAGS_RELEASE "-g0 -Os -flto -DBUILD_MODE=Release")
-set(CMAKE_C_FLAGS_RELEASE   "-g0 -Os -flto -DBUILD_MODE=Release")
+set(CMAKE_CXX_FLAGS_RELEASE "-g0 -O3 -flto -DBUILD_MODE=Release")
+set(CMAKE_C_FLAGS_RELEASE   "-g0 -O3 -flto -DBUILD_MODE=Release")
 
 
 add_definitions(-DUSE_GC=true)
@@ -43,8 +43,9 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 
 include(${CMAKE_SOURCE_DIR}/lib/CMakeLists.txt)
 
-# target_compile_options(helion PRIVATE -Wall -Wno-unused-function -Wno-sign-compare -Wextra -Wno-unused-parameter -Wno-strict-aliasing)
+target_compile_options(helion PRIVATE -Wall -Wno-unused-function -Wno-sign-compare -Wextra -Wno-unused-parameter -Wno-strict-aliasing)
 
 
-# install(TARGETS helion DESTINATION bin CONFIGURATIONS Release)
-# install(TARGETS helion-lib DESTINATION lib CONFIGURATIONS Release)
+install(TARGETS helion DESTINATION bin CONFIGURATIONS Release)
+install(TARGETS helion-lib DESTINATION lib CONFIGURATIONS Release)
+install(TARGETS helion-a DESTINATION lib CONFIGURATIONS Release)

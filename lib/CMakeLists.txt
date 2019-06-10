@@ -48,3 +48,6 @@ add_executable(helion
 
 target_include_directories(helion PRIVATE ${LLVM_INCLUDE_DIRS})
 target_link_libraries(helion helion-lib)
+
+
+set_target_properties(helion PROPERTIES OUTPUT_NAME he)

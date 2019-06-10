@@ -21,9 +21,6 @@ gen:
 
 install:
 	cd $(BINDIR); make install
-	mkdir -p /usr/local/lib/cedar
-	@rm -rf /usr/local/lib/cedar
-	cp -r lib /usr/local/lib/cedar/
 	cp -r include/ /usr/local/include/
 
 clean:

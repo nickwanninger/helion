@@ -25,37 +25,6 @@
 #include <gc/gc.h>
 
 
-#define allocate _alloc
-#define deallocate _free
-
-static void* _alloc(size_t size) {
-  void* p = malloc(size);
-  return p;
-}
-
-static void _free(void* ptr) {
-  if (ptr != nullptr) {
-    free(ptr);
-  }
-}
-
-
-
-
-#ifdef __GLIBC__
-#define _NOEXCEPT _GLIBCXX_USE_NOEXCEPT
-#endif
-
-void* operator new(size_t size) { return allocate(size); }
-void* operator new[](size_t size) { return allocate(size); }
-
-void operator delete(void* ptr)_NOEXCEPT { deallocate(ptr); }
-void operator delete[](void* ptr) _NOEXCEPT { deallocate(ptr); }
-void operator delete(void* ptr, std::size_t s)_NOEXCEPT { deallocate(ptr); }
-void operator delete[](void* ptr, std::size_t s) _NOEXCEPT { deallocate(ptr); }
-
-
-
 void *helion::gc::alloc(int n) {
   return GC_MALLOC(n);
 }
