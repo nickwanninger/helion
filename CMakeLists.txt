@@ -17,17 +17,11 @@ set(CMAKE_C_FLAGS_DEBUG "-g -O0 -DBUILD_MODE=Debug -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS_RELEASE "-g0 -Os -flto -DBUILD_MODE=Release")
 set(CMAKE_C_FLAGS_RELEASE   "-g0 -Os -flto -DBUILD_MODE=Release")
 
-set(CMAKE_VERBOSE_MAKEFILE ON)
-
-add_definitions(-DPOINTER_MASK=0x0007FFFFFFFFFFFF)
-
 
 add_definitions(-DUSE_GC=true)
 
 # build dependencies before setting up project deets
 # add_subdirectory(dep/libuv)
-
-# set(BUILD_SHARED_LIBS ON)
 
 link_directories(/usr/local/lib)
 include_directories(/usr/local/include)
@@ -47,11 +41,10 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 
 
 
-include(${CMAKE_SOURCE_DIR}/src/llvm/CMakeLists.txt)
-include(${CMAKE_SOURCE_DIR}/src/helion/CMakeLists.txt)
+include(${CMAKE_SOURCE_DIR}/lib/CMakeLists.txt)
 
-target_compile_options(helion PRIVATE -Wall -Wno-unused-function -Wno-sign-compare -Wextra -Wno-unused-parameter -Wno-strict-aliasing)
+# target_compile_options(helion PRIVATE -Wall -Wno-unused-function -Wno-sign-compare -Wextra -Wno-unused-parameter -Wno-strict-aliasing)
 
 
-install(TARGETS helion DESTINATION bin CONFIGURATIONS Release)
+# install(TARGETS helion DESTINATION bin CONFIGURATIONS Release)
 # install(TARGETS helion-lib DESTINATION lib CONFIGURATIONS Release)
