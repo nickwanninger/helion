@@ -287,9 +287,11 @@ text ast::prototype::str(int) {
   }
   s += ")";
 
-  if (type->params[0] != nullptr) {
-    s += " : ";
-    s += type->params[0]->str();
+  if (type != nullptr) {
+    if (type->params[0] != nullptr) {
+      s += " : ";
+      s += type->params[0]->str();
+    }
   }
   return s;
 }
@@ -299,7 +301,11 @@ text ast::func::str(int depth) {
   for (int i = 0; i < depth; i++) indent += "  ";
 
   text s;
-  s += proto->str();
+  if (proto != nullptr) {
+    s += proto->str();
+  } else {
+    s += "()";
+  }
   s += " -> ";
 
   if (stmts.size() > 1) {
@@ -312,11 +318,9 @@ text ast::func::str(int depth) {
       s += "\n";
     }
     s += stmts[0]->str(depth + 1);
-
-
     s += indent;
     s += "end";
-  } else {
+  } else if (stmts.size() == 1) {
     s += stmts[0]->str(depth + 1);
   }
   return s;
@@ -330,7 +334,7 @@ text ast::def::str(int depth) {
   text s;
 
   s += "def ";
-  s += name;
+  s += fn->name;
   s += " ";
 
   if (fn->proto != nullptr) s += fn->proto->str();

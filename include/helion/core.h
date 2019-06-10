@@ -55,10 +55,10 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 
+#include <helion/text.h>
 #include <flat_hash_map.hpp>
 #include <mutex>
-
-#include <helion/text.h>
+#include <unordered_map>
 
 /*
  * this header file defines the core classes and data types used throughout the
@@ -224,10 +224,80 @@ namespace helion {
 
 
 
+  class module;
+  class method_instance;
+
   // forward decl of codegen structs
-  class cg_ctx;
   struct cg_binding;
-  class cg_scope;
+  /**
+   * Represents the context for a single method compilation
+   */
+  class cg_ctx {
+   public:
+    llvm::IRBuilder<> builder;
+    llvm::Function *func = nullptr;
+    helion::module *module = nullptr;
+    // what method instance is this compiling?
+    method_instance *linfo;
+    std::string func_name;
+    std::vector<cgval> args;
+    cg_ctx(llvm::LLVMContext &llvmctx) : builder(llvmctx) {}
+  };
+
+  struct cg_binding {
+    std::string name;
+    datatype *type;
+    llvm::Value *val;
+  };
+
+  class cg_scope {
+   protected:
+    std::unordered_map<std::string, datatype *> m_types;
+    std::unordered_map<std::string, std::unique_ptr<cg_binding>> m_bindings;
+    std::unordered_map<llvm::Value *, datatype *> m_val_types;
+    cg_scope *m_parent;
+
+    std::vector<std::unique_ptr<cg_scope>> children;
+
+   public:
+    module *mod;
+
+    cg_scope *spawn();
+    cg_binding *find_binding(std::string &name);
+    inline void set_binding(std::string name, std::unique_ptr<cg_binding> b) {
+      m_bindings[name] = std::move(b);
+    }
+
+    // type lookups
+    datatype *find_type(std::string);
+    inline void set_type(std::string name, datatype *T) { m_types[name] = T; }
+
+    datatype *find_val_type(llvm::Value *);
+    inline void set_val_type(llvm::Value *val, datatype *t) {
+      m_val_types[val] = t;
+    }
+
+    inline text str(int depth = 0) {
+      text indent = "";
+      for (int i = 0; i < depth; i++) indent += "  ";
+      text s;
+      for (auto &t : m_types) {
+        s += indent;
+        s += t.first;
+        s += " : ";
+        s += t.second->str();
+        s += "\n";
+      }
+      for (auto &c : children) {
+        s += c->str(depth + 1);
+      }
+      return s;
+    }
+
+    inline void set_parent(cg_scope *s) { m_parent = s; }
+  };
+
+  class cg_options {};
 
 
   datatype *specialize(std::shared_ptr<ast::type_node> &, cg_scope *);
@@ -245,56 +315,6 @@ namespace helion {
   bool subtype(datatype *A, datatype *B);
 
 
-  /**
-   * A method signature represents the type of a signature at runtime. It is
-   * used to represent return types and argument types. Each method_signature is
-   * stored and owned by a static map in `method.cpp`, and method signatures are
-   * handled by an int64. The reason for this abstraction is because at runtime,
-   * there needs to be efficient lookup of these method signatures in methods
-   * because lambdas should have specializations compiled at runtime as they are
-   * needed. This is not really a problem for top level defs, as we can
-   * statically determine this information
-   */
-  struct method_signature {
-    datatype *return_type;
-    std::vector<datatype *> arguments;
-  };
-
-  class method_instance;
-
-  class method {
-   public:
-    using sig_handle = int64_t;
-    cg_scope *scope;
-    std::string name;
-    std::string file;
-    std::shared_ptr<ast::node> src;
-    // table of all method_instance specializations that we've compiled
-    std::vector<method_instance *> specializations;
-
-    static method *create(std::shared_ptr<ast::def> &);
-    static method *create(std::shared_ptr<ast::func> &, cg_scope *);
-
-
-    // a simple list of the ast nodes that define entry points to this method
-    // for example, if a function is defined more than once, each of the
-    // overloads go into this vector. When an implementation is needed at
-    // compile time, the compiler will go through this list to find a best-fit.
-    // Unfortunately, this means there could be ambiguity in choosing a method.
-    std::vector<std::shared_ptr<ast::func>> definitions;
-
-   private:
-    std::mutex lock;
-    // the
-    ska::flat_hash_map<method::sig_handle, method_instance *> instances;
-  };
-
-
-  class method_instance {
-   public:
-    // what method is this an instance of?
-    method *of;
-  };
 
 
   using RTDyldObjHandleT = llvm::orc::VModuleKey;
@@ -389,6 +409,70 @@ namespace helion {
   extern ojit_ee *execution_engine;
 
 
+
+
+  /**
+   * A method signature represents the type of a signature at runtime. It is
+   * used to represent return types and argument types. Each method_signature is
+   * stored and owned by a static map in `method.cpp`, and method signatures are
+   * handled by an int64. The reason for this abstraction is because at runtime,
+   * there needs to be efficient lookup of these method signatures in methods
+   * because lambdas should have specializations compiled at runtime as they are
+   * needed. This is not really a problem for top level defs, as we can
+   * statically determine this information
+   */
+  struct method_signature {
+    datatype *return_type;
+    std::vector<datatype *> arguments;
+  };
+
+
+  class module;
+  class method_instance;
+
+  class method {
+   public:
+    // sig_handles are an efficient index into a set that can be used at runtime.
+    // They can be used to request a certain method instance from a method at
+    // runtime instead of having to store the entire call type.
+    using sig_handle = int64_t;
+    cg_scope *scope;
+    std::string name;
+    std::string file;
+    // a simple list of the ast nodes that define entry points to this method
+    // for example, if a function is defined more than once, each of the
+    // overloads go into this vector. When an implementation is needed at
+    // compile time, the compiler will go through this list to find a best-fit.
+    // Unfortunately, this means there could be ambiguity in choosing a method
+    // that we will have to resolve later down the line
+    std::vector<std::shared_ptr<ast::func>> definitions;
+    // table of all method_instance specializations that we've compiled
+    std::vector<method_instance *> specializations;
+    /*
+    static method *create(std::shared_ptr<ast::def> &);
+    static method *create(std::shared_ptr<ast::func> &, cg_scope *);
+    */
+
+    // stringification function
+    text str();
+
+    // constructor
+    method(module *);
+
+   private:
+    module *mod;
+    std::mutex lock;
+
+    // A mapping from signature handles to instances.
+    ska::flat_hash_map<method::sig_handle, method_instance *> instances;
+  };
+
+  class method_instance {
+   public:
+    // what method is this an instance of?
+    method *of;
+  };
+
   // a global_variable is what helion global variables are stored in
   struct global_variable {
     datatype *type;
@@ -409,19 +493,24 @@ namespace helion {
     text name;
     std::map<std::string, std::unique_ptr<global_variable>> globals;
 
+    std::vector<std::unique_ptr<method>> method_table;
+    // a hashmap from names to methods, so `defs` can overload similar names
+    ska::flat_hash_map<std::string, method *> overload_lookup;
+
    public:
     // represents the global scope for this module
-    std::unique_ptr<cg_scope> scope;
+    cg_scope *scope;
 
     global_variable *find(std::string);
 
     // Returns a pointer to the cell which the value is stored in
     void *global_create(std::string, datatype *);
+
+    method *add_method(std::shared_ptr<ast::func>&);
   };
 
 
-
-  void compile_module(std::unique_ptr<ast::module> m);
+  module *compile_module(std::unique_ptr<ast::module> m);
 
 
   void init_types(void);

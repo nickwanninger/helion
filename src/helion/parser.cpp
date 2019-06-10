@@ -133,11 +133,9 @@ std::unique_ptr<ast::module> helion::parse_module(pstate s) {
 
   entry->fn = std::make_shared<ast::func>(mod->get_scope());
   mod->get_scope()->fn = entry->fn;
-
-  // impossible function name
-  entry->name = "#entry";
-
+  entry->fn->proto = std::make_shared<ast::prototype>(mod->get_scope());
   entry->fn->stmts = stmts;
+  entry->fn->anonymous = true;
 
   mod->entry = entry;
 
@@ -1073,7 +1071,7 @@ static presult parse_def(pstate s, scope *sc) {
 
   s++;
   if (s.first().type == tok_var) {
-    n->name = s.first().val;
+    n->fn->name = s.first().val;
   } else {
     throw syntax_error(s, "invalid name for function");
   }
@@ -1148,7 +1146,6 @@ static presult parse_typedef(pstate s, scope *sc) {
   s = glob_term(s);
 
   while (s.first().type != tok_end) {
-    puts(s.first());
     if (s.first().type == tok_type || s.first().type == tok_left_square) {
       auto typer = parse_type(s, sc);
       if (!typer)

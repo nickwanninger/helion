@@ -48,6 +48,9 @@ int main(int argc, char **argv) {
   GC_allow_register_threads();
   helion::init();
 
+
+  puts(sizeof(llvm::Value));
+
   const char *ep_ptr = entry_point.c_str();
 
   // check that the file exists before trying to read it
@@ -63,7 +66,7 @@ int main(int argc, char **argv) {
 
   try {
     auto res = parse_module(src, entry_point);
-    puts(res->str());
+    // puts(res->str());
     compile_module(std::move(res));
   } catch (syntax_error &e) {
     puts(e.what());

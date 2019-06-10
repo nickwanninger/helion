@@ -14,141 +14,69 @@ using namespace helion;
 
 
 // the global llvm context
-llvm::LLVMContext helion::llvm_ctx;
-
-llvm::TargetMachine *target_machine = nullptr;
-
 static llvm::DataLayout data_layout("");
-ojit_ee *helion::execution_engine = nullptr;
-
-
 static std::unique_ptr<cg_scope> global_scope;
 
-
+llvm::LLVMContext helion::llvm_ctx;
+llvm::TargetMachine *target_machine = nullptr;
+ojit_ee *helion::execution_engine = nullptr;
 llvm::Function *allocate_function = nullptr;
 llvm::Function *deallocate_function = nullptr;
-
-
 
 
 static void init_llvm_env();
 
 
-namespace helion {
-  /**
-   * Represents the context for a single method compilation
-   */
-  class cg_ctx {
-   public:
-    llvm::IRBuilder<> builder;
-    llvm::Function *func = nullptr;
-    helion::module *module = nullptr;
-    // what method instance is this compiling?
-    method_instance *linfo;
-    std::string func_name;
-    std::vector<cgval> args;
-    cg_ctx(llvm::LLVMContext &llvmctx) : builder(llvmctx) {}
-  };
 
-  struct cg_binding {
-    std::string name;
-    datatype *type;
-    llvm::Value *val;
-  };
 
-  class cg_scope {
-   protected:
-    std::unordered_map<std::string, datatype *> m_types;
-    std::unordered_map<std::string, std::unique_ptr<cg_binding>> m_bindings;
-    std::unordered_map<llvm::Value *, datatype *> m_val_types;
-    cg_scope *m_parent;
+cg_scope *helion::cg_scope::spawn() {
+  auto p = std::make_unique<cg_scope>();
+  cg_scope *ptr = p.get();
+  ptr->m_parent = this;
+  ptr->mod = mod;
+  children.push_back(std::move(p));
+  return ptr;
+}
 
-    std::vector<std::unique_ptr<cg_scope>> children;
 
-   public:
-    cg_scope *spawn() {
-      auto p = std::make_unique<cg_scope>();
-      cg_scope *ptr = p.get();
-      ptr->m_parent = this;
-      children.push_back(std::move(p));
-      return ptr;
+cg_binding *cg_scope::find_binding(std::string &name) {
+  auto *sc = this;
+  while (sc != nullptr) {
+    if (sc->m_bindings.count(name) != 0) {
+      return sc->m_bindings[name].get();
     }
+    sc = sc->m_parent;
+  }
+  return nullptr;
+}
 
-    cg_binding *find_binding(std::string &name) {
-      auto *sc = this;
-      while (sc != nullptr) {
-        if (sc->m_bindings.count(name) != 0) {
-          return sc->m_bindings[name].get();
-        }
-        sc = sc->m_parent;
-      }
-      return nullptr;
+
+
+// type lookups
+datatype *cg_scope::find_type(std::string name) {
+  auto *sc = this;
+  while (sc != nullptr) {
+    if (sc->m_types.count(name) != 0) {
+      return sc->m_types[name];
     }
+    sc = sc->m_parent;
+  }
+  return nullptr;
+}
 
-    void set_binding(std::string name, std::unique_ptr<cg_binding> binding) {
-      m_bindings[name] = std::move(binding);
+
+
+
+datatype *cg_scope::find_val_type(llvm::Value *v) {
+  auto *sc = this;
+  while (sc != nullptr) {
+    if (sc->m_val_types.count(v) != 0) {
+      return sc->m_val_types[v];
     }
-
-    // type lookups
-    datatype *find_type(std::string name) {
-      auto *sc = this;
-      while (sc != nullptr) {
-        if (sc->m_types.count(name) != 0) {
-          return sc->m_types[name];
-        }
-        sc = sc->m_parent;
-      }
-      return nullptr;
-    }
-
-    void set_type(std::string name, datatype *T) { m_types[name] = T; }
-
-
-
-    datatype *find_val_type(llvm::Value *v) {
-      auto *sc = this;
-      while (sc != nullptr) {
-        if (sc->m_val_types.count(v) != 0) {
-          return sc->m_val_types[v];
-        }
-        sc = sc->m_parent;
-      }
-      return nullptr;
-    }
-
-    void set_val_type(llvm::Value *val, datatype *t) { m_val_types[val] = t; }
-
-
-    inline text str(int depth = 0) {
-      text indent = "";
-      for (int i = 0; i < depth; i++) indent += "  ";
-      text s;
-      for (auto &t : m_types) {
-        s += indent;
-        s += t.first;
-        s += " : ";
-        s += t.second->str();
-        s += "\n";
-      }
-
-
-      for (auto &c : children) {
-        s += c->str(depth + 1);
-      }
-
-      return s;
-    }
-
-
-    void set_parent(cg_scope *s) { m_parent = s; }
-  };
-
-  class cg_options {};
-
-}  // namespace helion
-
-
-
+    sc = sc->m_parent;
+  }
+  return nullptr;
+}
 
 /**
  * Functions can only reference functions in their own module, so we have to
@@ -269,132 +197,48 @@ static void init_llvm_env() {
 
 static datatype *declare_type(std::shared_ptr<ast::typedef_node>, cg_scope *);
 
-void helion::compile_module(std::unique_ptr<ast::module> m) {
+
+
+
+static std::vector<std::unique_ptr<module>> modules;
+
+
+
+/**
+ * takes an ast::module and turns it into a module that contains
+ * executable code and all the state needed for execution
+ */
+module *helion::compile_module(std::unique_ptr<ast::module> m) {
+  auto mod = std::make_unique<module>();
+  mod->scope = global_scope->spawn();
+  mod->scope->mod = mod.get();
+
   // the very first thing we have to do is declare the types
-  for (auto t : m->typedefs) declare_type(t, global_scope.get());
+  for (auto t : m->typedefs) declare_type(t, mod->scope);
+
+  // create all the methods
+  for (auto &d : m->defs) mod->add_method(d->fn);
 
 
 
+  auto entry_fn = m->entry->fn;
+  entry_fn->anonymous = true;
 
-  auto llt = specialize(global_scope->find_type("Node"), {int32_type},
-                        global_scope.get())
-                 ->to_llvm();
-
-  llt->print(llvm::errs());
-
-  auto mod = create_module("test");
+  auto entry_method = mod->add_method(entry_fn);
 
 
-  std::string name = "a";
+  puts(entry_method->str());
 
-  (void)new llvm::GlobalVariable(
-      *mod, llt, false, llvm::GlobalValue::CommonLinkage, 0, "abc");
-  mod->print(llvm::errs(), nullptr);
 
+  auto modptr = mod.get();
+
+  modules.push_back(std::move(mod));
+
+
+  return modptr;
 }
 
 
-
-
-llvm::Value *ast::number::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
-  return nullptr;
-}
-
-
-
-llvm::Value *ast::binary_op::codegen(cg_ctx &ctx, cg_scope *sc,
-                                     cg_options *opt) {
-  return nullptr;
-}
-
-llvm::Value *ast::dot::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
-  return nullptr;
-}
-
-
-llvm::Value *ast::subscript::codegen(cg_ctx &ctx, cg_scope *sc,
-                                     cg_options *opt) {
-  return nullptr;
-}
-
-llvm::Value *ast::call::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
-  return nullptr;
-}
-
-
-
-llvm::Value *ast::tuple::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
-  return nullptr;
-}
-
-
-llvm::Value *ast::string::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
-  return nullptr;
-}
-
-llvm::Value *ast::keyword::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
-  return nullptr;
-}
-
-llvm::Value *ast::nil::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
-  return nullptr;
-}
-
-llvm::Value *ast::do_block::codegen(cg_ctx &ctx, cg_scope *sc,
-                                    cg_options *opt) {
-  return nullptr;
-}
-
-llvm::Value *ast::return_node::codegen(cg_ctx &ctx, cg_scope *sc,
-                                       cg_options *opt) {
-  return nullptr;
-}
-
-
-llvm::Value *ast::type_node::codegen(cg_ctx &ctx, cg_scope *sc,
-                                     cg_options *opt) {
-  return nullptr;
-}
-
-llvm::Value *ast::var_decl::codegen(cg_ctx &ctx, cg_scope *sc,
-                                    cg_options *opt) {
-  return nullptr;
-}
-
-
-llvm::Value *ast::var::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
-  return nullptr;
-}
-
-llvm::Value *ast::prototype::codegen(cg_ctx &ctx, cg_scope *sc,
-                                     cg_options *opt) {
-  return nullptr;
-}
-
-
-llvm::Value *ast::func::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
-  return nullptr;
-}
-
-
-llvm::Value *ast::def::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
-  return nullptr;
-}
-
-llvm::Value *ast::if_node::codegen(cg_ctx &ctx, cg_scope *sc, cg_options *opt) {
-  return nullptr;
-}
-
-
-llvm::Value *ast::typedef_node::codegen(cg_ctx &ctx, cg_scope *sc,
-                                        cg_options *opt) {
-  return nullptr;
-}
-
-llvm::Value *ast::typeassert::codegen(cg_ctx &ctx, cg_scope *sc,
-                                      cg_options *opt) {
-  return nullptr;
-}
 
 
 static datatype *declare_type(std::shared_ptr<ast::typedef_node> n,
@@ -491,28 +335,6 @@ datatype *helion::specialize(datatype *t, std::vector<datatype *> params,
   }
 
   return spec;
-}
-
-
-
-static std::vector<std::unique_ptr<method>> method_table;
-
-// create a method from a global def. Simply a named func creation
-// in the global_scope
-method *method::create(std::shared_ptr<ast::def> &n) {
-  method *m = method::create(n->fn, global_scope.get());
-  m->name = n->name;
-  return m;
-}
-
-
-
-method *method::create(std::shared_ptr<ast::func> &fn, cg_scope *scp) {
-  auto m = std::make_unique<method>();
-  auto mptr = m.get();
-
-  method_table.push_back(std::move(m));
-  return mptr;
 }
 
 
@@ -624,6 +446,12 @@ global_variable *module::find(std::string s) {
 }
 
 
+
+
+global_variable::~global_variable() { gc::free(data); }
+
+
+
 void *module::global_create(std::string name, datatype *type) {
   auto llt = type->to_llvm();
   auto size = data_layout.getTypeAllocSize(llt);
@@ -641,5 +469,26 @@ void *module::global_create(std::string name, datatype *type) {
 }
 
 
-
-global_variable::~global_variable() { gc::free(data); }
+method *module::add_method(std::shared_ptr<ast::func> &fn) {
+  method *m;
+  // first, anonymous functions area added unconditionally.
+  if (fn->anonymous) {
+    // create a unique_ptr and add it to the method table for this
+    auto mp = std::make_unique<method>(this);
+    m = mp.get();
+    method_table.push_back(std::move(mp));
+  } else {
+    // otherwise, we need to look up the method in the overload table
+    m = overload_lookup[fn->name];
+    if (m == nullptr) {
+      auto mp = std::make_unique<method>(this);
+      m = mp.get();
+      method_table.push_back(std::move(mp));
+      overload_lookup[fn->name] = m;
+    } else {
+    }
+  }
+  // push the definition to the list
+  m->definitions.push_back(fn);
+  return m;
+}

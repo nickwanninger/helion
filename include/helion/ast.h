@@ -5,10 +5,10 @@
 #ifndef __HELION_AST_H__
 #define __HELION_AST_H__
 
+#include <helion/core.h>
 #include <helion/text.h>
 #include <helion/tokenizer.h>
 #include <helion/util.h>
-#include <helion/core.h>
 #include <vector>
 
 
@@ -25,7 +25,6 @@ namespace helion {
   // forward declaration
   class cg_ctx;
   class cg_scope;
-  class cg_options;
 
 
 
@@ -37,10 +36,10 @@ namespace helion {
   namespace ast {
 
 
-#define NODE_FOOTER                                         \
- public:                                                    \
-  using node::node;                                         \
-  llvm::Value *codegen(cg_ctx &, cg_scope *, cg_options *); \
+#define NODE_FOOTER                           \
+ public:                                      \
+  using node::node;                           \
+  llvm::Value *codegen(cg_ctx &, cg_scope *); \
   text str(int depth = 0);
 
     // @abstract, all ast::nodes extend from this publically
@@ -71,6 +70,9 @@ namespace helion {
 
       virtual text str(int depth = 0) { return ""; };
 
+      virtual inline llvm::Value *codegen(cg_ctx &, cg_scope *) {
+        return nullptr;
+      }
       // virtual void codegen(void);
     };
 
@@ -201,7 +203,7 @@ namespace helion {
       text name;
       std::shared_ptr<ast::node> value;
       text str(int = 0);
-      llvm::Value *codegen(cg_ctx &, cg_scope *, cg_options *);
+      llvm::Value *codegen(cg_ctx &, cg_scope *);
     };
 
 
@@ -239,13 +241,13 @@ namespace helion {
       std::shared_ptr<prototype> proto = nullptr;
       std::vector<std::shared_ptr<ast::node>> stmts;
 
+      std::string name = "";
       bool anonymous = false;
       NODE_FOOTER;
     };
 
     class def : public node {
      public:
-      text name;
       std::shared_ptr<func> fn;
       NODE_FOOTER;
     };
