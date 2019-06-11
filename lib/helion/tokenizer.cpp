@@ -74,10 +74,6 @@ token tokenizer::get(size_t i) {
 token tokenizer::emit(uint8_t t, text v) {
   token tok(t, v, source, line, column);
 
-
-
-  puts(v);
-
   if (last_emit_ended != -1) {
     if (is_space(source->operator[](last_emit_ended - 1))) {
       tok.space_before = true;
