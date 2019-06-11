@@ -25,10 +25,10 @@
 #include <gc/gc.h>
 
 
-void *helion::gc::alloc(int n) {
+void *helion::gc::raw_alloc(int n) {
   return GC_MALLOC(n);
 }
 
-void helion::gc::free(void *p) {
+void helion::gc::raw_free(void *p) {
   GC_FREE(p);
 }

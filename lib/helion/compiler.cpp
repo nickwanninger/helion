@@ -245,13 +245,12 @@ static datatype *declare_type(std::shared_ptr<ast::typedef_node> n,
   auto type = n->type;
   std::string name = type->name;
 
-  std::vector<std::string> params;
+  slice<text> params;
   for (auto &p : type->params) {
     params.push_back(p->name);
     if (p->params.size() != 0)
       throw std::logic_error("type definition parameters must be simple names");
   }
-
 
   auto *t = &datatype::create(type->name, *any_type, params);
 
@@ -281,7 +280,7 @@ datatype *helion::specialize(datatype *t, cg_scope *scp) {
   return specialize(t, {}, scp);
 }
 
-datatype *helion::specialize(datatype *t, std::vector<datatype *> params,
+datatype *helion::specialize(datatype *t, slice<datatype *> params,
                              cg_scope *scp) {
   if (t->ti->style == type_style::FLOATING ||
       t->ti->style == type_style::INTEGER)
@@ -307,7 +306,7 @@ datatype *helion::specialize(datatype *t, std::vector<datatype *> params,
   // Step 3. Search through the specializations in the typeinfo and
   //         attempt to find an existing specialization
   for (auto &s : t->ti->specializations) {
-    if (s->param_types == params) return s.get();
+    if (s->param_types == params) return s;
   }
 
   // Step 4. Create a new specialization, this is one of the more complicated

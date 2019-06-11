@@ -11,6 +11,8 @@
 #include <iostream>
 #include <iterator>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 
 namespace helion {
@@ -35,6 +37,9 @@ namespace helion {
     friend std::hash<slice<T>>;
 
    public:
+    typedef T *iterator;
+    typedef const T *const_iterator;
+
     T *begin() { return m_data; }
     T *end() { return m_data + len; }
     const T *begin() const { return m_data; }
@@ -48,6 +53,8 @@ namespace helion {
       len = cap;
     }
 
+    inline slice(slice<T> &o) { *this = o; }
+
     inline slice(std::initializer_list<T> init) {
       reserve(init.size());
       for (auto &el : init) {
@@ -55,10 +62,34 @@ namespace helion {
       }
     }
 
-    inline slice(std::vector<T> &v) {
+    inline slice(std::vector<T> &v) { *this = v; }
+
+
+
+    inline slice &operator=(slice<T> &v) {
+      clear();
       for (auto &e : v) {
         push_back(e);
       }
+      return *this;
+    }
+
+
+    inline slice &operator=(std::vector<T> &v) {
+      clear();
+      for (auto &e : v) {
+        push_back(e);
+      }
+      return *this;
+    }
+
+
+    inline slice<T> cut(int s, int e) {
+      int newlen = e - s;
+      slice<T> n(*this);
+      n.m_data += s;
+      n.len = n.cap = newlen;
+      return n;
     }
 
 
@@ -72,6 +103,7 @@ namespace helion {
 
     // access specified element w/o bounds checking
     inline T &operator[](int i) const { return m_data[i]; }
+
 
     // direct access to the underlying array
     const T *data(void) const { return m_data; }
@@ -130,6 +162,12 @@ namespace helion {
       std::swap(len, other.len);
       std::swap(cap, other.cap);
       std::swap(m_data, other.m_data);
+    }
+
+    inline operator std::vector<T>(void) {
+      std::vector<T> v;
+      for (auto &el : *this) v.push_back(el);
+      return v;
     }
   };
 

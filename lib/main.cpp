@@ -49,6 +49,9 @@ int main(int argc, char **argv) {
   GC_allow_register_threads();
   helion::init();
 
+  auto val = gc::make_collected<int>(1);
+  puts(*val);
+
 
   const char *ep_ptr = entry_point.c_str();
   // check that the file exists before trying to read it

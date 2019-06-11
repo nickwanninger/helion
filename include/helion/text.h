@@ -7,13 +7,13 @@
 
 namespace helion {
 
-	using rune = uint32_t;
+	using rune = char;
 
 	class text {
 		public:
 
 		  // using container = std::u32string;
-		  using container = std::u32string;
+		  using container = std::string;
 
 		protected:
 
@@ -37,7 +37,7 @@ namespace helion {
 			text(const char*);
 			text(const char32_t*);
 			text(std::string const&);
-			text(std::u32string const&);
+			// text(std::u32string const&);
 			text(const helion::text&);
 
 			~text(void);
@@ -67,7 +67,7 @@ namespace helion {
 			text& operator+=(std::string const&);
 			text& operator+=(char);
 			text& operator+=(int);
-			text& operator+=(rune);
+			// text& operator+=(rune);
 
 			text& operator=(const text&);
 
@@ -77,7 +77,7 @@ namespace helion {
 
 
 			operator std::string() const;
-			operator std::u32string() const;
+			// operator std::u32string() const;
 
 			rune operator[](size_t) const;
 			rune operator[](size_t);

@@ -45,7 +45,7 @@ static std::u32string to_utf32(std::string const & s) {
 }
 
 
-void text::ingest_utf8(std::string const& s) { buf = to_utf32(s); }
+void text::ingest_utf8(std::string const& s) { buf = s; }
 
 
 text::text() {}
@@ -71,7 +71,7 @@ text::text(const helion::text& other) {
 }
 
 
-text::text(std::u32string const& s) { buf = s; }
+// text::text(std::u32string const& s) { buf = s; }
 
 
 text& text::operator=(const text& o) {
@@ -125,17 +125,19 @@ text& text::operator+=(int c) {
   return *this;
 }
 
+/*
 text& text::operator+=(rune c) {
   buf.push_back(c);
   return *this;
 }
+*/
 
 bool text::operator==(const text& other) { return other.buf == buf; }
 bool text::operator==(const text& other) const { return other.buf == buf; }
 
 
-text::operator std::string() const { return to_utf8(buf); }
-text::operator std::u32string() const { return buf; }
+text::operator std::string() const { return buf; }
+// text::operator std::u32string() const { return buf; }
 
 rune text::operator[](size_t i) { return buf[i]; }
 

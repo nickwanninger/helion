@@ -223,9 +223,6 @@ static presult expand_expression(presult r, scope *sc) {
       continue;
     }
 
-
-
-
     if (start_token.space_before) {
       break;
     }
@@ -369,6 +366,7 @@ static presult parse_num(pstate s, scope *sc) {
       break;
     }
   }
+
 
   if (floating) {
     // parse a float

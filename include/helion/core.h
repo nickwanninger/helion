@@ -59,7 +59,8 @@
 #include <flat_hash_map.hpp>
 #include <mutex>
 #include <unordered_map>
-
+#include "slice.h"
+#include "util.h"
 /*
  * this header file defines the core classes and data types used throughout the
  * helion compiler and jit runtime. For example, the module type, the basic type
@@ -155,9 +156,10 @@ namespace helion {
     // the super type of this type. Defaults to any_type
     datatype *super;
 
-    std::vector<std::string> param_names;
-
-    std::vector<std::unique_ptr<datatype>> specializations;
+    // list of parameter names
+    slice<text> param_names;
+    // garbage collected list of specializations
+    slice<datatype *> specializations;
 
     std::mutex lock;
   };
@@ -169,45 +171,44 @@ namespace helion {
   struct datatype {
     struct field {
       datatype *type;
-      std::string name;
+      text name;
     };
     bool specialized = false;
     bool completed = false;
     // declaration of the type in LLVM as an llvm::Type
     llvm::Type *type_decl = nullptr;
     std::vector<field> fields;
-    std::vector<datatype *> param_types;
+    slice<datatype *> param_types;
     std::shared_ptr<typeinfo> ti;
 
-    static datatype &create(std::string, datatype & = *any_type,
-                            std::vector<std::string> = {});
-    static inline datatype &create(std::string n, std::vector<std::string> p) {
+    static datatype &create(text, datatype & = *any_type, slice<text> = {});
+    static inline datatype &create(text n, slice<text> p) {
       return datatype::create(n, *any_type, p);
     };
 
-    void add_field(std::string, datatype *);
+    void add_field(text, datatype *);
 
     llvm::Type *to_llvm(void);
     text str(void);
 
     inline datatype *spawn_spec() {
-      auto n = new datatype(*this);
+      auto n = gc::make_collected<datatype>(*this);
       n->specialized = true;
-      ti->specializations.push_back(std::unique_ptr<datatype>(n));
+      ti->specializations.push_back(n);
       return n;
     }
 
     static datatype *from(llvm::Value *v);
     static datatype *from(llvm::Type *t);
 
-    static datatype &create_integer(std::string, int);
-    static datatype &create_float(std::string, int);
+    static datatype &create_integer(text, int);
+    static datatype &create_float(text, int);
 
-    static datatype &create_struct(std::string);
+    static datatype &create_struct(text);
 
     static datatype &create_buffer(int);
 
-    static datatype &create(std::string, llvm::Type *);
+    static datatype &create(text, llvm::Type *);
 
     template <typename T>
     static inline datatype &create_placeholder(void) {
@@ -215,15 +216,14 @@ namespace helion {
     }
 
 
-
-   private:
-    inline datatype(std::string name, datatype &s) {
+    inline datatype(text name, datatype &s) {
       ti = std::make_shared<typeinfo>();
       ti->name = name;
       ti->super = &s;
     }
     inline datatype(datatype &other) { ti = other.ti; }
 
+   private:
     // map of jit compiled field accessors
     ska::flat_hash_map<std::string, std::function<void *(value *)>>
         field_accessors;
@@ -327,7 +327,7 @@ namespace helion {
 
 
   datatype *specialize(std::shared_ptr<ast::type_node> &, cg_scope *);
-  datatype *specialize(datatype *, std::vector<datatype *>, cg_scope *);
+  datatype *specialize(datatype *, slice<datatype *>, cg_scope *);
   datatype *specialize(datatype *, cg_scope *);
 
 

@@ -22,7 +22,7 @@ datatype *helion::float64_type;
 datatype *helion::datatype_type;
 datatype *helion::generic_ptr_type;
 
-static std::vector<std::unique_ptr<datatype>> types;
+static std::vector<datatype *> types;
 static ska::flat_hash_map<llvm::Type *, datatype *> llvm_to_datatype_map;
 
 
@@ -47,7 +47,6 @@ void helion::init_types(void) {
   datatype_type->add_field("completed", bool_type);
 
   datatype_type->to_llvm()->print(llvm::errs());
-  puts();
 }
 
 // line for line implementation of the subtype algorithm from the julia paper.
@@ -183,72 +182,72 @@ text datatype::str() {
   return s;
 }
 
-datatype &datatype::create(std::string name, datatype &sup,
-                           std::vector<std::string> params) {
-  std::unique_ptr<datatype> t(new datatype(name, sup));
+datatype &datatype::create(text name, datatype &sup,
+                           slice<text> params) {
+  auto t = gc::make_collected<datatype>(name, sup);
   t->ti->param_names = params;
   int tid = types.size();
-  types.emplace_back(std::move(t));
+  types.emplace_back(t);
   return *types[tid];
 }
 
 
 
-datatype &datatype::create_integer(std::string name, int bits) {
-  std::unique_ptr<datatype> t(new datatype(name, *int32_type));
+datatype &datatype::create_integer(text name, int bits) {
+  auto t = gc::make_collected<datatype>(name, *int64_type);
   int tid = types.size();
   t->ti->bits = bits;
   t->specialized = true;
   t->ti->style = type_style::INTEGER;
-  types.emplace_back(std::move(t));
+  types.emplace_back(t);
   return *types[tid];
 }
 
 
-datatype &datatype::create_float(std::string name, int bits) {
-  std::unique_ptr<datatype> t(new datatype(name, *float32_type));
+datatype &datatype::create_float(text name, int bits) {
+  auto t = gc::make_collected<datatype>(name, *float32_type);
   int tid = types.size();
   t->ti->bits = bits;
   t->specialized = true;
   t->ti->style = type_style::FLOATING;
-  types.emplace_back(std::move(t));
+  types.emplace_back(t);
   return *types[tid];
 }
 
 
-datatype &datatype::create_struct(std::string name) {
-  std::unique_ptr<datatype> t(new datatype(name, *any_type));
+datatype &datatype::create_struct(text name) {
+  auto t = gc::make_collected<datatype>(name, *any_type);
   int tid = types.size();
   t->specialized = true;
   t->ti->style = type_style::STRUCT;
-  types.emplace_back(std::move(t));
+  types.emplace_back(t);
   return *types[tid];
 }
 
 datatype &datatype::create_buffer(int len) {
-  std::unique_ptr<datatype> t(new datatype("buffer", *any_type));
+  auto t = gc::make_collected<datatype>("buffer", *any_type);
   int tid = types.size();
   t->specialized = true;
   t->type_decl = llvm::ArrayType::get(llvm::Type::getInt8Ty(llvm_ctx), len);
   t->ti->style = type_style::STRUCT;
-  types.emplace_back(std::move(t));
+  types.emplace_back(t);
   return *types[tid];
 }
 
 
-datatype &datatype::create(std::string name, llvm::Type *lt) {
-  std::unique_ptr<datatype> t(new datatype(name, *any_type));
+datatype &datatype::create(text name, llvm::Type *lt) {
+  auto t = gc::make_collected<datatype>(name, *any_type);
   int tid = types.size();
   t->specialized = true;
   t->type_decl = lt;
   t->ti->style = type_style::STRUCT;
-  types.emplace_back(std::move(t));
+  types.emplace_back(t);
   return *types[tid];
 }
 
 
 
-void datatype::add_field(std::string name, datatype *type) {
+void datatype::add_field(text name, datatype *type) {
   for (auto &f : fields) {
     if (f.name == name) {
       f.type = type;
