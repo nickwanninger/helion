@@ -66,7 +66,6 @@ datatype *cg_scope::find_type(std::string name) {
 
 
 
-
 datatype *cg_scope::find_val_type(llvm::Value *v) {
   auto *sc = this;
   while (sc != nullptr) {
@@ -344,11 +343,11 @@ datatype *helion::specialize(datatype *t, std::vector<datatype *> params,
  * number of parameters, and all of the parameters pattern match
  * successfully. Will throw
  */
-static void pattern_match_params(ast::type_node *n, datatype *on, cg_scope *s) {
+static void pattern_match_params(ast::type_node *n,
+                                                    datatype *on, cg_scope *s) {
   if (n->params.size() != on->param_types.size()) {
     throw pattern_match_error(*n, *on, "Parameter count mismatch");
   }
-
   for (size_t i = 0; i < n->params.size(); i++) {
     pattern_match(n->params[i], on->param_types[i], s);
   }

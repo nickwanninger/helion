@@ -17,7 +17,7 @@ datatype *helion::float32_type;
 
 
 static std::vector<std::unique_ptr<datatype>> types;
-
+static ska::flat_hash_map<llvm::Type *, datatype *> llvm_to_datatype_map;
 
 
 void helion::init_types(void) {
@@ -64,9 +64,6 @@ bool helion::subtype(datatype *A, datatype *B) {
     if (A->param_types.size() != B->param_types.size()) {
       return false;
     }
-
-
-
     // now we check if the base type A <= B by walking the inheritence list
     while (A != any_type) {
       // TODO: use type ids, not string names...
@@ -207,6 +204,8 @@ void datatype::add_field(std::string name, datatype *type) {
 }
 
 
+
+
 llvm::Type *datatype::to_llvm(void) {
   if (type_decl != nullptr) return type_decl;
 
@@ -265,5 +264,28 @@ llvm::Type *datatype::to_llvm(void) {
     type_decl = stct;
   }
 
+  {
+    // lower the type to its lowest non-pointer
+    // version and store that in the global map
+    auto t = type_decl;
+    while (t->isPointerTy()) t = t->getPointerElementType();
+    llvm_to_datatype_map[t] = this;
+  }
+
   return type_decl;
 }
+
+
+datatype *datatype::from(llvm::Value *v) {
+  return datatype::from(v->getType());
+}
+
+datatype *datatype::from(llvm::Type *t) {
+  // reduce the type to the lowest non-pointer version, as that is what
+  // is stored in the global map
+  while (t->isPointerTy()) t = t->getPointerElementType();
+  // if the llvm type is not found in the map, return nothing
+  if (llvm_to_datatype_map.count(t) == 0) return nullptr;
+  return llvm_to_datatype_map.at(t);
+}
+

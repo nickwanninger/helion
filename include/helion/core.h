@@ -167,14 +167,9 @@ namespace helion {
       return datatype::create(n, *any_type, p);
     };
 
-    static datatype &create_integer(std::string, int);
-    static datatype &create_float(std::string, int);
-
     void add_field(std::string, datatype *);
-    // datatype *specialize(std::vector<datatype *>);
 
     llvm::Type *to_llvm(void);
-
     text str(void);
 
     inline datatype *spawn_spec() {
@@ -183,6 +178,12 @@ namespace helion {
       ti->specializations.push_back(std::unique_ptr<datatype>(n));
       return n;
     }
+
+    static datatype *from(llvm::Value *v);
+    static datatype *from(llvm::Type *t);
+
+    static datatype &create_integer(std::string, int);
+    static datatype &create_float(std::string, int);
 
    private:
     inline datatype(std::string name, datatype &s) {
@@ -213,15 +214,6 @@ namespace helion {
 
 
 
-  struct cgval {
-    llvm::Value *v;
-    datatype *typ;
-    cgval(llvm::Value *v, datatype *typ) : v(v), typ(typ) {}
-    cgval() = delete;
-    inline operator llvm::Value *() const { return v; }
-    inline operator datatype *() const { return typ; }
-  };
-
 
 
   class module;
@@ -240,9 +232,11 @@ namespace helion {
     // what method instance is this compiling?
     method_instance *linfo;
     std::string func_name;
-    std::vector<cgval> args;
     cg_ctx(llvm::LLVMContext &llvmctx) : builder(llvmctx) {}
   };
+
+
+
 
   struct cg_binding {
     std::string name;
@@ -432,9 +426,9 @@ namespace helion {
 
   class method {
    public:
-    // sig_handles are an efficient index into a set that can be used at runtime.
-    // They can be used to request a certain method instance from a method at
-    // runtime instead of having to store the entire call type.
+    // sig_handles are an efficient index into a set that can be used at
+    // runtime. They can be used to request a certain method instance from a
+    // method at runtime instead of having to store the entire call type.
     using sig_handle = int64_t;
     cg_scope *scope;
     std::string name;
@@ -448,16 +442,18 @@ namespace helion {
     std::vector<std::shared_ptr<ast::func>> definitions;
     // table of all method_instance specializations that we've compiled
     std::vector<method_instance *> specializations;
-    /*
-    static method *create(std::shared_ptr<ast::def> &);
-    static method *create(std::shared_ptr<ast::func> &, cg_scope *);
-    */
 
     // stringification function
     text str();
 
     // constructor
     method(module *);
+
+
+    // get a method instance specialization for a set of argument types
+    // Returns null returns null when a spec cannot be found or there
+    // is an ambiguous set of arguments
+    method_instance *specialize(std::vector<datatype *>);
 
    private:
     module *mod;
@@ -468,9 +464,16 @@ namespace helion {
   };
 
   class method_instance {
+    // cached reference to the function
+    llvm::Function *func;
+
    public:
     // what method is this an instance of?
     method *of;
+    datatype *return_type;
+    std::vector<datatype *> arg_types;
+
+    llvm::Function *codegen(cg_ctx &, cg_scope *);
   };
 
   // a global_variable is what helion global variables are stored in
@@ -506,7 +509,7 @@ namespace helion {
     // Returns a pointer to the cell which the value is stored in
     void *global_create(std::string, datatype *);
 
-    method *add_method(std::shared_ptr<ast::func>&);
+    method *add_method(std::shared_ptr<ast::func> &);
   };
 
 
