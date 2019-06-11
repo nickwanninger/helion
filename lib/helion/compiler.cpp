@@ -410,8 +410,6 @@ void helion::pattern_match(std::shared_ptr<ast::type_node> &n, datatype *on,
   // the type we are pattern matching on must be specialized
   assert(on->specialized);
 
-
-
   // Determine the type of the node. If it is a plain type reference, pattern
   // match on it and it's parameters.
   if (n->style == type_style::OBJECT) {

@@ -49,7 +49,9 @@ int main(int argc, char **argv) {
   helion::init();
 
 
-  puts(sizeof(llvm::Value));
+
+  helion::slice<int> s = {1, 2, 3};
+  puts(s);
 
   const char *ep_ptr = entry_point.c_str();
 

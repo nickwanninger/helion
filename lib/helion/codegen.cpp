@@ -11,6 +11,28 @@
 
 using namespace helion;
 
+
+
+llvm::Function *helion::compile_method(method_instance *mi, cg_scope *s,
+                                       llvm::Module *m) {
+  cg_ctx ctx(llvm_ctx);
+
+  auto voidt = llvm::Type::getVoidTy(llvm_ctx);
+
+  std::vector<llvm::Type *> arg_types;
+  // for (auto t : mi->
+
+  auto *type = llvm::FunctionType::get(voidt, arg_types, false);
+
+  // create the function in the provided module
+  ctx.func = llvm::Function::Create(type, llvm::Function::LinkageTypes::ExternalLinkage, mi->of->name, m);
+
+
+  auto bb = llvm::BasicBlock::Create(llvm_ctx, "entry", ctx.func);
+  ctx.builder.SetInsertPoint(bb);
+  return ctx.func;
+}
+
 llvm::Value *ast::number::codegen(cg_ctx &ctx, cg_scope *sc) {
   llvm::Value *val = nullptr;
   if (type == num_type::integer) {
@@ -28,19 +50,25 @@ llvm::Value *ast::number::codegen(cg_ctx &ctx, cg_scope *sc) {
 
 
 llvm::Value *ast::binary_op::codegen(cg_ctx &ctx, cg_scope *sc) {
+  auto leftv = left->codegen(ctx, sc);
+  auto rightv = left->codegen(ctx, sc);
   return nullptr;
 }
 
-llvm::Value *ast::dot::codegen(cg_ctx &ctx, cg_scope *sc) { return nullptr; }
+llvm::Value *ast::dot::codegen(cg_ctx &ctx, cg_scope *sc) {
+  auto into = expr->codegen(ctx, sc);
+  // TODO: implement dot
+  return nullptr;
+}
 
 
 llvm::Value *ast::subscript::codegen(cg_ctx &ctx, cg_scope *sc) {
+  auto into = expr->codegen(ctx, sc);
+  // TODO: implement subscript
   return nullptr;
 }
 
 llvm::Value *ast::call::codegen(cg_ctx &ctx, cg_scope *sc) { return nullptr; }
-
-
 
 llvm::Value *ast::tuple::codegen(cg_ctx &ctx, cg_scope *sc) { return nullptr; }
 

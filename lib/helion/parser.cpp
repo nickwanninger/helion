@@ -30,8 +30,6 @@ static std::shared_ptr<ast::type_node> get_next_param_type(scope *s) {
   return t;
 }
 
-
-
 ast::module::module() { m_scope = std::make_unique<scope>(); }
 
 scope *ast::module::get_scope(void) { return m_scope.get(); }

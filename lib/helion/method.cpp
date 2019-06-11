@@ -18,7 +18,6 @@ text helion::method::str(void) {
   s += "# Method\n";
 
   for (auto &fn : definitions) {
-    printf("%p\n", fn.get());
     s += fn->str();
     s += "\n";
   }

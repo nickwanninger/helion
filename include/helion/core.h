@@ -86,18 +86,37 @@ namespace helion {
   struct datatype;
 
 
-  // a linkage to the 'Any' type
   extern datatype *any_type;
-  // a linkage to the basic int type
+  extern datatype *bool_type;
+  extern datatype *int8_type;
+  extern datatype *int16_type;
   extern datatype *int32_type;
-  // a linkage to the basic float type
+  extern datatype *int64_type;
   extern datatype *float32_type;
+  extern datatype *float64_type;
+  extern datatype *datatype_type;
+
+  extern datatype *generic_ptr_type;
 
 
   // a value is an opaque pointer to something garbage collected in the helion
   // jit runtime. It has no real meaning except as a better, typed replacement
   // for voidptr
   struct value;
+
+
+
+  // global_binding is an opaque pointer to a global variable binding which is
+  // managed as an LLVM type later on.
+  struct global_binding;
+
+  // we use LLVM structs to represent global variables, so we have to JIT some
+  // LLVM functions to access the fields of the struct. Therefore, we have
+  // global variable bindings to those functions after they are generated :)
+  // TODO: please find a way to not do this.
+  extern std::function<global_binding *()> create_global_binding;
+
+
 
   struct datatype_name {};
   enum class type_style : unsigned char {
@@ -111,6 +130,8 @@ namespace helion {
     SLICE,     // the first parameter is the type of the slice. Only one param
                // allowed
     OPTIONAL,  // first param is the type it is an optional of
+    STRUCT,  // representation of a pure c struct, mainly for mirroring runtime
+             // types
   };
 
 
@@ -150,16 +171,13 @@ namespace helion {
       datatype *type;
       std::string name;
     };
-    std::shared_ptr<typeinfo> ti;
-
-
     bool specialized = false;
     bool completed = false;
-    // a list of type parameters. ie: Vector<Int>
-    std::vector<datatype *> param_types;
     // declaration of the type in LLVM as an llvm::Type
     llvm::Type *type_decl = nullptr;
     std::vector<field> fields;
+    std::vector<datatype *> param_types;
+    std::shared_ptr<typeinfo> ti;
 
     static datatype &create(std::string, datatype & = *any_type,
                             std::vector<std::string> = {});
@@ -185,14 +203,30 @@ namespace helion {
     static datatype &create_integer(std::string, int);
     static datatype &create_float(std::string, int);
 
+    static datatype &create_struct(std::string);
+
+    static datatype &create_buffer(int);
+
+    static datatype &create(std::string, llvm::Type *);
+
+    template <typename T>
+    static inline datatype &create_placeholder(void) {
+      return create_buffer(sizeof(T));
+    }
+
+
+
    private:
     inline datatype(std::string name, datatype &s) {
       ti = std::make_shared<typeinfo>();
       ti->name = name;
       ti->super = &s;
     }
-
     inline datatype(datatype &other) { ti = other.ti; }
+
+    // map of jit compiled field accessors
+    ska::flat_hash_map<std::string, std::function<void *(value *)>>
+        field_accessors;
   };
 
 
@@ -215,7 +249,6 @@ namespace helion {
 
 
 
-
   class module;
   class method_instance;
 
@@ -231,7 +264,6 @@ namespace helion {
     helion::module *module = nullptr;
     // what method instance is this compiling?
     method_instance *linfo;
-    std::string func_name;
     cg_ctx(llvm::LLVMContext &llvmctx) : builder(llvmctx) {}
   };
 
@@ -402,9 +434,6 @@ namespace helion {
   // make sense for the use-cases of helion
   extern ojit_ee *execution_engine;
 
-
-
-
   /**
    * A method signature represents the type of a signature at runtime. It is
    * used to represent return types and argument types. Each method_signature is
@@ -445,11 +474,8 @@ namespace helion {
 
     // stringification function
     text str();
-
     // constructor
     method(module *);
-
-
     // get a method instance specialization for a set of argument types
     // Returns null returns null when a spec cannot be found or there
     // is an ambiguous set of arguments
@@ -475,6 +501,9 @@ namespace helion {
 
     llvm::Function *codegen(cg_ctx &, cg_scope *);
   };
+
+
+  llvm::Function *compile_method(method_instance *, cg_scope *, llvm::Module *);
 
   // a global_variable is what helion global variables are stored in
   struct global_variable {
@@ -526,12 +555,6 @@ namespace helion {
     init_types();
     init_codegen();
   }
-
-
-
-
-  void *global_find(std::string);
-  void *global_set(std::string);
 
 };  // namespace helion
 

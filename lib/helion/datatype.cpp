@@ -12,9 +12,15 @@ using namespace helion;
 // It must be asserted that the supertype is never null, and in
 // a situation that it would be, it should be any instead
 datatype *helion::any_type;
+datatype *helion::bool_type;
+datatype *helion::int8_type;
+datatype *helion::int16_type;
 datatype *helion::int32_type;
+datatype *helion::int64_type;
 datatype *helion::float32_type;
-
+datatype *helion::float64_type;
+datatype *helion::datatype_type;
+datatype *helion::generic_ptr_type;
 
 static std::vector<std::unique_ptr<datatype>> types;
 static ska::flat_hash_map<llvm::Type *, datatype *> llvm_to_datatype_map;
@@ -23,8 +29,25 @@ static ska::flat_hash_map<llvm::Type *, datatype *> llvm_to_datatype_map;
 void helion::init_types(void) {
   // the base Any type has Any as a supertype (recursively)
   any_type = &datatype::create("Any");
+
+  bool_type = &datatype::create_integer("Bool", 1);
+  int8_type = &datatype::create_integer("Byte", 8);
+  int16_type = &datatype::create_integer("Short", 16);
   int32_type = &datatype::create_integer("Int", 32);
+  int64_type = &datatype::create_integer("Long", 64);
+
   float32_type = &datatype::create_float("Float", 32);
+  float64_type = &datatype::create_float("Double", 64);
+
+  generic_ptr_type =
+      &datatype::create("ptr", int8_type->to_llvm()->getPointerTo());
+
+  datatype_type = &datatype::create_struct("datatype");
+  datatype_type->add_field("specialized", bool_type);
+  datatype_type->add_field("completed", bool_type);
+
+  datatype_type->to_llvm()->print(llvm::errs());
+  puts();
 }
 
 // line for line implementation of the subtype algorithm from the julia paper.
@@ -103,8 +126,11 @@ text datatype::str() {
     s += ti->name;
     return s;
   } else if (ti->style == type_style::OBJECT ||
-             ti->style == type_style::TUPLE || ti->style == type_style::UNION) {
-    if (ti->style == type_style::OBJECT) s += ti->name;
+             ti->style == type_style::TUPLE || ti->style == type_style::UNION ||
+             ti->style == type_style::STRUCT) {
+    // please ignore this terrible code.
+    if (ti->style == type_style::OBJECT || ti->style == type_style::STRUCT)
+      s += ti->name;
     if (ti->style == type_style::TUPLE) s += "Tuple";
     if (ti->style == type_style::UNION) s += "Union";
 
@@ -189,6 +215,39 @@ datatype &datatype::create_float(std::string name, int bits) {
   return *types[tid];
 }
 
+
+datatype &datatype::create_struct(std::string name) {
+  std::unique_ptr<datatype> t(new datatype(name, *any_type));
+  int tid = types.size();
+  t->specialized = true;
+  t->ti->style = type_style::STRUCT;
+  types.emplace_back(std::move(t));
+  return *types[tid];
+}
+
+datatype &datatype::create_buffer(int len) {
+  std::unique_ptr<datatype> t(new datatype("buffer", *any_type));
+  int tid = types.size();
+  t->specialized = true;
+  t->type_decl = llvm::ArrayType::get(llvm::Type::getInt8Ty(llvm_ctx), len);
+  t->ti->style = type_style::STRUCT;
+  types.emplace_back(std::move(t));
+  return *types[tid];
+}
+
+
+datatype &datatype::create(std::string name, llvm::Type *lt) {
+  std::unique_ptr<datatype> t(new datatype(name, *any_type));
+  int tid = types.size();
+  t->specialized = true;
+  t->type_decl = lt;
+  t->ti->style = type_style::STRUCT;
+  types.emplace_back(std::move(t));
+  return *types[tid];
+}
+
+
+
 void datatype::add_field(std::string name, datatype *type) {
   for (auto &f : fields) {
     if (f.name == name) {
@@ -224,7 +283,6 @@ llvm::Type *datatype::to_llvm(void) {
     auto stct = llvm::StructType::create(llvm_ctx, s);
     type_decl = stct;
 
-
     std::string tname = str();
     std::vector<llvm::Type *> flds;
     // push back a voidptr type
@@ -242,7 +300,7 @@ llvm::Type *datatype::to_llvm(void) {
       flds.push_back(field);
     }
 
-    stct->setBody(flds, true);
+    stct->setBody(flds);
   } else if (ti->style == type_style::SLICE) {
     std::string s = str();
     auto stct = llvm::StructType::create(llvm_ctx, s);
@@ -260,8 +318,21 @@ llvm::Type *datatype::to_llvm(void) {
       flds.push_back(field->getPointerTo());
     }
 
-
     type_decl = stct;
+  } else if (ti->style == type_style::STRUCT) {
+    std::string s = str();
+    auto stct = llvm::StructType::create(llvm_ctx, s);
+    type_decl = stct;
+    std::string tname = str();
+    std::vector<llvm::Type *> flds;
+    for (auto &f : fields) {
+      llvm::Type *field = f.type->to_llvm();
+      if (f.type->ti->style == type_style::OBJECT) {
+        field = field->getPointerTo();
+      }
+      flds.push_back(field);
+    }
+    stct->setBody(flds);
   }
 
   {

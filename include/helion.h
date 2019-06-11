@@ -35,6 +35,7 @@
 #include "helion/text.h"
 #include "helion/types.h"
 #include "helion/parser.h"
+#include "helion/slice.h"
 #include "helion/gcconfig.h"
 #include "helion/gc.h"
 #include "helion/tokenizer.h"
