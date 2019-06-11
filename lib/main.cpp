@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <uv.h>
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <map>
@@ -49,12 +50,7 @@ int main(int argc, char **argv) {
   helion::init();
 
 
-
-  helion::slice<int> s = {1, 2, 3};
-  puts(s);
-
   const char *ep_ptr = entry_point.c_str();
-
   // check that the file exists before trying to read it
   struct stat sinfo;
   int sres = stat(ep_ptr, &sinfo);

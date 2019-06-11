@@ -8,8 +8,8 @@
 
 #include <helion/gc.h>
 #include <initializer_list>
-#include <iterator>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 
 
@@ -26,73 +26,21 @@ namespace helion {
    */
   template <typename T>
   class slice {
+   protected:
     int len = 0;
     int cap = 0;
     T *m_data = nullptr;
 
+
+    friend std::hash<slice<T>>;
+
    public:
-    class iterator {
-     public:
-      typedef iterator self_type;
-      typedef T value_type;
-      typedef T &reference;
-      typedef T *pointer;
-      typedef std::forward_iterator_tag iterator_category;
-      typedef int difference_type;
-      iterator(pointer ptr) : ptr_(ptr) {}
-      self_type operator++() {
-        self_type i = *this;
-        ptr_++;
-        return i;
-      }
-      self_type operator++(int junk) {
-        ptr_++;
-        return *this;
-      }
-      reference operator*() { return *ptr_; }
-      pointer operator->() { return ptr_; }
-      bool operator==(const self_type &rhs) { return ptr_ == rhs.ptr_; }
-      bool operator!=(const self_type &rhs) { return ptr_ != rhs.ptr_; }
-
-     private:
-      pointer ptr_;
-    };
-
-    class const_iterator {
-     public:
-      typedef const_iterator self_type;
-      typedef T value_type;
-      typedef T &reference;
-      typedef T *pointer;
-      typedef int difference_type;
-      typedef std::forward_iterator_tag iterator_category;
-      const_iterator(pointer ptr) : ptr_(ptr) {}
-      self_type operator++() {
-        self_type i = *this;
-        ptr_++;
-        return i;
-      }
-      self_type operator++(int junk) {
-        ptr_++;
-        return *this;
-      }
-      reference operator*() { return *ptr_; }
-      const pointer operator->() { return ptr_; }
-      bool operator==(const self_type &rhs) { return ptr_ == rhs.ptr_; }
-      bool operator!=(const self_type &rhs) { return ptr_ != rhs.ptr_; }
-
-     private:
-      pointer ptr_;
-    };
+    T *begin() { return m_data; }
+    T *end() { return m_data + len; }
+    const T *begin() const { return m_data; }
+    const T *end() const { return m_data + len; }
 
 
-    iterator begin() { return iterator(m_data); }
-
-    iterator end() { return iterator(m_data + len); }
-
-    const_iterator begin() const { return const_iterator(m_data); }
-
-    const_iterator end() const { return const_iterator(m_data + len); }
 
     inline slice() { reserve(1); }
     inline explicit slice(int count) {
@@ -107,6 +55,12 @@ namespace helion {
       }
     }
 
+    inline slice(std::vector<T> &v) {
+      for (auto &e : v) {
+        push_back(e);
+      }
+    }
+
 
     // access specified element with bounds checking
     inline T &at(int i) {
@@ -117,7 +71,7 @@ namespace helion {
     }
 
     // access specified element w/o bounds checking
-    inline T &operator[](int i) { return m_data[i]; }
+    inline T &operator[](int i) const { return m_data[i]; }
 
     // direct access to the underlying array
     const T *data(void) const { return m_data; }
@@ -168,6 +122,15 @@ namespace helion {
     inline void pop_back(void) {
       if (len > 0) len--;
     }
+
+    /**
+     * swap simply swaps around the data stored in the struct
+     */
+    inline void swap(slice<T> &other) {
+      std::swap(len, other.len);
+      std::swap(cap, other.cap);
+      std::swap(m_data, other.m_data);
+    }
   };
 
   template <typename T>
@@ -181,6 +144,75 @@ namespace helion {
     os << "}";
     return os;
   }
+
+
+
+  template <typename T>
+  bool operator==(const slice<T> &lhs, const slice<T> &rhs) {
+    if (lhs.size() != rhs.size()) return false;
+
+    for (int i = 0; i < lhs.size(); i++) {
+      if (lhs[i] != rhs[i]) return false;
+    }
+    return true;
+  }
+
+  template <typename T>
+  bool operator!=(const slice<T> &lhs, const slice<T> &rhs) {
+    return !(lhs == rhs);
+  }
+
+  template <class T>
+  inline bool operator<(const slice<T> &x, const slice<T> &y) {
+    return std::lexicographical_compare(x.begin(), x.end(), y.begin(), y.end());
+  }
+
+  template <class T>
+  inline bool operator>(const slice<T> &x, const slice<T> &y) {
+    return y < x;
+  }
+
+  template <class T>
+  inline bool operator>=(const slice<T> &x, const slice<T> &y) {
+    return !(x < y);
+  }
+
+  template <class T>
+  inline bool operator<=(const slice<T> &x, const slice<T> &y) {
+    return !(y < x);
+  }
+
 }  // namespace helion
 
+
+
+namespace std {
+  template <typename T>
+  inline void swap(helion::slice<T> &l, helion::slice<T> &r) {
+    l.swap(r);
+  }
+
+
+
+
+  template <typename T>
+  struct std::hash<helion::slice<T>> {
+    std::size_t operator()(const helion::slice<T> &k) const {
+      std::hash<T> hf;
+      size_t x = 0;
+      size_t y = 0;
+      size_t mult = 1000003UL;  // prime multiplier
+
+      x = 0x345678UL;
+
+      for (auto &it : k) {
+        y = hf(it);
+        x = (x ^ y) * mult;
+        mult += (size_t)(852520UL + 2);
+      }
+      return x;
+    }
+  };
+
+}  // namespace std
 #endif
