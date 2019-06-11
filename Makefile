@@ -17,7 +17,6 @@ src/bdwgc/.libs/libgc.a:
 gen:
 	@python3 tools/scripts/generate_helion_h.py
 	@python3 tools/scripts/generate_tokens.py
-	@python3 tools/scripts/generate_src_cmakelists.py
 
 install:
 	cd $(BINDIR); make install
