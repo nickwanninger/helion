@@ -203,12 +203,15 @@ static std::vector<std::unique_ptr<module>> modules;
 
 
 
+static ska::flat_hash_map<text, datatype *> datatypes_from_names;
+
 /**
  * takes an ast::module and turns it into a module that contains
  * executable code and all the state needed for execution
  */
 module *helion::compile_module(std::unique_ptr<ast::module> m) {
   auto mod = std::make_unique<module>();
+  // setup the scope for this module
   mod->scope = global_scope->spawn();
   mod->scope->mod = mod.get();
 
@@ -219,22 +222,14 @@ module *helion::compile_module(std::unique_ptr<ast::module> m) {
   for (auto &d : m->defs) mod->add_method(d->fn);
 
 
+  auto Node = mod->scope->find_type("Node");
+  auto NodeInt = Node->specialize({int32_type}, mod->scope);
+  auto NodeNodeInt = Node->specialize({NodeInt}, mod->scope);
 
-  auto entry_fn = m->entry->fn;
-  entry_fn->anonymous = true;
-
-  auto entry_method = mod->add_method(entry_fn);
-
-
-  puts(entry_method->str());
+  NodeNodeInt->to_llvm();
 
 
-  auto modptr = mod.get();
-
-  modules.push_back(std::move(mod));
-
-
-  return modptr;
+  return nullptr;
 }
 
 
@@ -246,94 +241,29 @@ static datatype *declare_type(std::shared_ptr<ast::typedef_node> n,
   std::string name = type->name;
 
   slice<text> params;
-  for (auto &p : type->params) {
+  for (auto p : type->params) {
     params.push_back(p->name);
     if (p->params.size() != 0)
       throw std::logic_error("type definition parameters must be simple names");
   }
 
-  auto *t = &datatype::create(type->name, *any_type, params);
+  // search for the type, error if it is found
+  auto *t = scp->find_type(type->name);
+
+  // error if the type was already defined in the scope
+  if (t != nullptr) throw std::logic_error("type already defined");
+
+  t = datatype::create(type->name, *any_type, params);
 
   // simply store the ast node in the type for now. Fields are sorted out
-  // at specialization and when needed
-  t->ti->node = n;
+  // at specialization and when needed. Copy it into the garbage collector
+  t->ti->def = gc::make_collected<ast::typedef_node>(*n);
   // store the type in the scope under it's name
   scp->set_type(name, t);
 
   return t;
 }
 
-datatype *helion::specialize(std::shared_ptr<ast::type_node> &tn, cg_scope *s) {
-  std::string name = tn->name;
-  datatype *t = s->find_type(name);
-
-  std::vector<datatype *> p;
-
-  for (auto &param : tn->params) {
-    p.push_back(specialize(param, s));
-  }
-  return specialize(t, p, s);
-}
-
-
-datatype *helion::specialize(datatype *t, cg_scope *scp) {
-  return specialize(t, {}, scp);
-}
-
-datatype *helion::specialize(datatype *t, slice<datatype *> params,
-                             cg_scope *scp) {
-  if (t->ti->style == type_style::FLOATING ||
-      t->ti->style == type_style::INTEGER)
-    return t;
-
-
-  // Step 1. Check that the parameter count is the same as is expected
-  if (params.size() != t->ti->param_names.size()) {
-    std::string err;
-    err += "Unable to specialize type ";
-    err += t->ti->name;
-    err += " with invalid number of parameters. Expected ";
-    err += std::to_string(t->ti->param_names.size());
-    err += ". Got ";
-    err += std::to_string(params.size());
-    throw std::logic_error(err.c_str());
-  }
-
-  // Step 2. Check if the current type is specialized or now. If it is,
-  // short circuit and return it
-  if (t->specialized) return t;
-
-  // Step 3. Search through the specializations in the typeinfo and
-  //         attempt to find an existing specialization
-  for (auto &s : t->ti->specializations) {
-    if (s->param_types == params) return s;
-  }
-
-  // Step 4. Create a new specialization, this is one of the more complicated
-  //         parts of the specialization lookup
-
-  // spawn a scope that the specialization will be built in
-  auto ns = cg_scope();
-  ns.set_parent(scp);
-
-  // loop over and fill in the new scope
-  for (size_t i = 0; i < t->ti->param_names.size(); i++) {
-    ns.set_type(t->ti->param_names[i], params[i]);
-  }
-
-  // allocate a new instance of the datatype
-  auto spec = t->spawn_spec();
-  spec->param_types = params;
-  spec->ti = t->ti;  // fill in the type info
-  auto node = t->ti->node;
-
-  for (auto &f : node->fields) {
-    auto *ft = specialize(f.type, &ns);
-    spec->add_field(f.name, ft);
-  }
-
-  return spec;
-}
 
 
 /**
@@ -342,8 +272,7 @@ datatype *helion::specialize(datatype *t, slice<datatype *> params,
  * number of parameters, and all of the parameters pattern match
  * successfully. Will throw
  */
-static void pattern_match_params(ast::type_node *n,
-                                                    datatype *on, cg_scope *s) {
+static void pattern_match_params(ast::type_node *n, datatype *on, cg_scope *s) {
   if (n->params.size() != on->param_types.size()) {
     throw pattern_match_error(*n, *on, "Parameter count mismatch");
   }

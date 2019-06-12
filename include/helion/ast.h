@@ -9,6 +9,7 @@
 #include <helion/text.h>
 #include <helion/tokenizer.h>
 #include <helion/util.h>
+#include <helion/slice.h>
 #include <vector>
 
 

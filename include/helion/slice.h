@@ -53,7 +53,10 @@ namespace helion {
       len = cap;
     }
 
-    inline slice(slice<T> &o) { *this = o; }
+    inline slice(slice<T> &o) {
+      reserve(o.capacity());
+      *this = o;
+    }
 
     inline slice(std::initializer_list<T> init) {
       reserve(init.size());
@@ -62,11 +65,15 @@ namespace helion {
       }
     }
 
-    inline slice(std::vector<T> &v) { *this = v; }
+    inline slice(std::vector<T> &v) {
+      reserve(v.capacity());
+      *this = v;
+    }
 
 
 
     inline slice &operator=(slice<T> &v) {
+      reserve(v.capacity());
       clear();
       for (auto &e : v) {
         push_back(e);
@@ -76,6 +83,7 @@ namespace helion {
 
 
     inline slice &operator=(std::vector<T> &v) {
+      reserve(v.capacity());
       clear();
       for (auto &e : v) {
         push_back(e);
@@ -174,7 +182,6 @@ namespace helion {
   template <typename T>
   std::ostream &operator<<(std::ostream &os, slice<T> &sl) {
     os << "{";
-
     for (int i = 0; i < sl.size(); i++) {
       os << sl[i];
       if (i != sl.size() - 1) os << ", ";

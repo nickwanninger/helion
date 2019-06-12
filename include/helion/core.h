@@ -119,7 +119,8 @@ namespace helion {
 
 
 
-  struct datatype_name {};
+  class cg_scope;
+
   enum class type_style : unsigned char {
     OBJECT,    // normal reference type
     INTEGER,   // is an n bit integer
@@ -136,32 +137,24 @@ namespace helion {
   };
 
 
-
   struct typeinfo {
-    // a type can have multiple 'styles'. For example, Int32 has the style of
-    // INTEGER, and thne has a size of 32. This is helpful when lowering to
-    // llvm::Type
-
-    std::shared_ptr<ast::typedef_node> node;
-
     type_style style = type_style::OBJECT;
-    std::string name;
-
+    text name;
     // how many bits this type is in memory (for primitive types)
     int bits;
-
     // a type is specialized iff it's parameters are filled in correctly
     bool specialized = false;
-
     // the super type of this type. Defaults to any_type
     datatype *super;
-
     // list of parameter names
     slice<text> param_names;
     // garbage collected list of specializations
     slice<datatype *> specializations;
-
+    // the definition of this type (can only be one)
+    ast::typedef_node *def;
     std::mutex lock;
+    datatype *specialize(slice<datatype *> &, cg_scope *);
+    datatype *specialize(cg_scope *);
   };
 
 
@@ -175,21 +168,38 @@ namespace helion {
     };
     bool specialized = false;
     bool completed = false;
+    typeinfo *ti;
     // declaration of the type in LLVM as an llvm::Type
     llvm::Type *type_decl = nullptr;
-    std::vector<field> fields;
+    slice<field> fields;
     slice<datatype *> param_types;
-    std::shared_ptr<typeinfo> ti;
 
-    static datatype &create(text, datatype & = *any_type, slice<text> = {});
-    static inline datatype &create(text n, slice<text> p) {
-      return datatype::create(n, *any_type, p);
-    };
+    text mangled_name(void);
+
+    /**
+     * methods
+     */
 
     void add_field(text, datatype *);
-
     llvm::Type *to_llvm(void);
+
     text str(void);
+    // constructors
+    static datatype *create(text, datatype & = *any_type, slice<text> = {});
+    static datatype *from(llvm::Value *v);
+    static datatype *from(llvm::Type *t);
+    static datatype *create_integer(text, int);
+    static datatype *create_float(text, int);
+    static datatype *create_struct(text);
+    static datatype *create_buffer(int);
+    static datatype *create(text, llvm::Type *);
+    static inline datatype *create(text n, slice<text> p) {
+      return datatype::create(n, *any_type, p);
+    };
+    template <typename T>
+    static inline datatype *create_placeholder(void) {
+      return create_buffer(sizeof(T));
+    }
 
     inline datatype *spawn_spec() {
       auto n = gc::make_collected<datatype>(*this);
@@ -198,35 +208,28 @@ namespace helion {
       return n;
     }
 
-    static datatype *from(llvm::Value *v);
-    static datatype *from(llvm::Type *t);
 
-    static datatype &create_integer(text, int);
-    static datatype &create_float(text, int);
-
-    static datatype &create_struct(text);
-
-    static datatype &create_buffer(int);
-
-    static datatype &create(text, llvm::Type *);
-
-    template <typename T>
-    static inline datatype &create_placeholder(void) {
-      return create_buffer(sizeof(T));
-    }
-
-
+    // real constructors. DON'T USE
     inline datatype(text name, datatype &s) {
-      ti = std::make_shared<typeinfo>();
+      ti = gc::make_collected<typeinfo>();
       ti->name = name;
       ti->super = &s;
     }
-    inline datatype(datatype &other) { ti = other.ti; }
+    inline datatype(typeinfo *t) : ti(t) {}
 
-   private:
-    // map of jit compiled field accessors
-    ska::flat_hash_map<std::string, std::function<void *(value *)>>
-        field_accessors;
+
+    inline bool is_obj() { return ti->style == type_style::OBJECT; }
+    inline bool is_int() { return ti->style == type_style::INTEGER; }
+    inline bool is_flt() { return ti->style == type_style::FLOATING; }
+    inline bool is_union() { return ti->style == type_style::UNION; }
+    inline bool is_tuple() { return ti->style == type_style::TUPLE; }
+    inline bool is_method() { return ti->style == type_style::METHOD; }
+    inline bool is_slice() { return ti->style == type_style::SLICE; }
+    inline bool is_struct() { return ti->style == type_style::STRUCT; }
+
+    inline datatype *specialize(slice<datatype *> s, cg_scope *sc) {
+      return ti->specialize(s, sc);
+    }
   };
 
 
@@ -320,15 +323,21 @@ namespace helion {
       return s;
     }
 
+
+    inline void print_types() {
+      for (auto &t : m_types) {
+        puts(t.first, "=", t.second->str());
+      }
+      if (m_parent != nullptr) {
+        puts("--------");
+        m_parent->print_types();
+      }
+    }
+
     inline void set_parent(cg_scope *s) { m_parent = s; }
   };
 
   class cg_options {};
-
-
-  datatype *specialize(std::shared_ptr<ast::type_node> &, cg_scope *);
-  datatype *specialize(datatype *, slice<datatype *>, cg_scope *);
-  datatype *specialize(datatype *, cg_scope *);
 
 
   // attempt to pattern match a type on another type, possibly updating the

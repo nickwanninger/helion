@@ -1,1 +1,11 @@
-return 1
+type Foo{T, V}
+	T one
+	V two
+end
+
+# Define a type
+type Node{T}
+	T val
+	Foo{Float, Node{T}} foo
+	Node{T} succ
+end
