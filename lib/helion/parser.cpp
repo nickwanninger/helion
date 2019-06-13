@@ -17,7 +17,7 @@ static std::atomic<int> next_type_num;
 
 
 static text get_next_param_name(void) {
-  text name = "Inferred_";
+  text name = "t";
   name += std::to_string(next_type_num++);
   return name;
 }
@@ -63,7 +63,7 @@ static presult parse_if(pstate, scope *);
 static presult parse_typedef(pstate, scope *);
 static presult parse_let(pstate, scope *);
 
-static presult parse_type(pstate s, scope *sc);
+static presult parse_type(pstate s, scope *sc, bool follow_arrows = true);
 
 
 
@@ -122,7 +122,7 @@ std::unique_ptr<ast::module> helion::parse_module(pstate s) {
         break;
       }
     } else {
-      throw syntax_error(s, "unexpected token");
+      throw syntax_error(s, "unexpected token in module");
     }
   }
 
@@ -644,49 +644,34 @@ static presult parse_do(pstate s, scope *sc) {
  * parse a type out into the special type representation.
  * This function absorbs the generic syntax as well
  */
-static presult parse_type(pstate s, scope *sc) {
+static presult parse_type(pstate s, scope *sc, bool follow_arrows) {
   bool constant = false;
   bool param = false;
 
 
-  if (s.first().type == tok_some) {
-    param = true;
-    s++;
-  }
-
-
-  if (s.first().type == tok_const) {
-    constant = true;
-    s++;
-  }
-
   std::shared_ptr<ast::type_node> type;
-
 
 
   auto open = tok_left_curly;
   auto close = tok_right_curly;
 
-  // base case, actual type parsing
-  if (s.first().type == tok_type) {
-    if (s.first().val == "Fn") {
-      // parse method type
-      type = std::make_shared<ast::type_node>(sc);
-      type->constant = constant;
-      type->name = s.first().val;
-      type->style = type_style::METHOD;
-      type->parameter = param;
-      if (param)
-        throw syntax_error(s, "cannot parameterize for some method type");
-      if (constant)
-        throw syntax_error(
-            s, "methods are implicitly constant. No need for `const` keyword");
 
-      s++;
-      std::shared_ptr<ast::type_node> return_type = nullptr;
-      std::vector<std::shared_ptr<ast::type_node>> types;
-      if (s.first().type != open)
-        throw syntax_error(s, "method type requires parameter information");
+  // base case, actual type parsing
+  if (s.first().type == tok_var) {
+    auto name = s.first().val;
+    if (!(name[0] >= 'A' && name[0] <= 'Z')) {
+      param = true;
+    }
+
+    type = std::make_shared<ast::type_node>(sc);
+    type->constant = constant;
+    type->name = s.first().val;
+    type->parameter = param;
+
+    s++;
+
+
+    if (s.first().type == open) {
       // skip the open token
       s++;
       // normal comma separated list parsing...
@@ -694,67 +679,23 @@ static presult parse_type(pstate s, scope *sc) {
         if (s.first().type == close) {
           break;
         }
-        if (s.first().type == tok_colon) {
-          s++;
-          auto ret_res = parse_type(s, sc);
-          if (!ret_res)
-            throw syntax_error(s,
-                               "invalid return type parameter in method type");
-          s = ret_res;
-          return_type = ret_res.as<ast::type_node>();
-          if (s.first().type != close)
-            throw syntax_error(s, "unexpected token");
-          break;
-        }
+
         auto param_res = parse_type(s, sc);
         if (!param_res) throw syntax_error(s, "invalid type parameter");
+
         s = param_res;
+
         auto T = param_res.as<ast::type_node>();
-        types.push_back(T);
+        type->params.push_back(T);
         if (s.first().type == tok_comma) {
           s++;
           continue;
         }
       }
       s++;
-      type->params.push_back(return_type);
-      for (auto &t : types) type->params.push_back(t);
-      goto FINALIZE;
-    } else {
-      type = std::make_shared<ast::type_node>(sc);
-      type->constant = constant;
-      type->name = s.first().val;
-      type->parameter = param;
-
-      s++;
-
-
-      if (s.first().type == open) {
-        // skip the open token
-        s++;
-        // normal comma separated list parsing...
-        while (true) {
-          if (s.first().type == close) {
-            break;
-          }
-
-          auto param_res = parse_type(s, sc);
-          if (!param_res) throw syntax_error(s, "invalid type parameter");
-
-          s = param_res;
-
-          auto T = param_res.as<ast::type_node>();
-          type->params.push_back(T);
-          if (s.first().type == tok_comma) {
-            s++;
-            continue;
-          }
-        }
-        s++;
-      }
-
-      goto FINALIZE;
     }
+
+    goto FINALIZE;
   }
 
   if (s.first().type == tok_left_square) {
@@ -782,6 +723,27 @@ static presult parse_type(pstate s, scope *sc) {
     goto FINALIZE;
   }
 
+
+  if (s.first().type == tok_left_paren) {
+    s++;
+
+    auto tr = parse_type(s, sc);
+    if (!tr) {
+      throw syntax_error(s, "failed to parse type");
+    }
+
+    s = tr;
+
+    if (s.first().type != tok_right_paren) {
+      throw syntax_error(s, "unclosed paren");
+    }
+    s++;
+
+    type = tr.as<ast::type_node>();
+
+    goto FINALIZE;
+  }
+
   if (constant) {
     type = std::make_shared<ast::type_node>(sc);
     type->constant = constant;
@@ -792,9 +754,30 @@ static presult parse_type(pstate s, scope *sc) {
 FINALIZE:
 
 
+  // after a type, if there is an arrow we need to absorb it
+  if (follow_arrows) {
+    puts("here");
+    if (s.first().type == tok_arrow) {
+      auto ftype = std::make_shared<ast::type_node>(sc);
+      ftype->style = type_style::METHOD;
+
+      ftype->params.push_back(type);
+      while (s.first().type == tok_arrow) {
+        puts("arrow");
+        s++;
+        // parse the type and do not follow the arrow
+        auto tres = parse_type(s, sc, false);
+        if (!tres) throw syntax_error(s, "invalid method type");
+        ftype->params.push_back(tres.as<ast::type_node>());
+      }
+      s++;
+      type = ftype;
+    }
+  }
+
+  /*
   // absorb optional question marks
   if (s.first().type == tok_question) {
-
     throw syntax_error(s, "optional types not supported currently");
     auto opt = std::make_shared<ast::type_node>(sc);
     opt->style = type_style::OPTIONAL;
@@ -802,6 +785,7 @@ FINALIZE:
     type = opt;
     s++;
   }
+  */
 
   return presult(type, s);
 }
@@ -840,7 +824,7 @@ static presult parse_prototype(pstate s, scope *sc) {
 
   while (true) {
     if (s.first().type == tok_term) {
-      break;
+      return pfail(s);
     }
 
     if ((expect_closing_paren && s.first().type == tok_right_paren) ||
@@ -849,26 +833,30 @@ static presult parse_prototype(pstate s, scope *sc) {
     }
 
 
-    rc<ast::type_node> atype = nullptr;
-    auto tres = parse_type(s, sc);
-
-
-    if (tres) {
-      atype = tres.as<ast::type_node>();
-      s = tres;
-    } else {
-      atype = get_next_param_type(sc);
-    }
-
-
-
     if (s.first().type != tok_var) {
-      return pfail(s);
+      throw syntax_error(s, "unexpected argument name");
     }
 
 
     text name = s.first().val;
     s++;
+
+    rc<ast::type_node> atype = nullptr;
+
+
+    if (s.first().type == tok_colon) {
+      s++;
+      auto tres = parse_type(s, sc);
+      if (tres) {
+        atype = tres.as<ast::type_node>();
+        s = tres;
+      }
+    }
+
+    if (atype == nullptr) {
+      atype = get_next_param_type(sc);
+    }
+
 
     argument_types.push_back(atype);
 
@@ -883,7 +871,6 @@ static presult parse_prototype(pstate s, scope *sc) {
     if (s.first().type != tok_comma && s.first().type != tok_right_paren &&
         s.first().type != tok_term && s.first().type != tok_colon) {
       return pfail(s);
-      throw syntax_error(s, "unexpected token");
     }
     if (s.first().type == tok_comma) s++;
   }
@@ -903,6 +890,8 @@ static presult parse_prototype(pstate s, scope *sc) {
       s = ret;
       return_type = ret.as<ast::type_node>();
     }
+  } else {
+    return_type = get_next_param_type(sc);
   }
 
   for (auto a : proto->args) {
@@ -980,19 +969,19 @@ static presult parse_function_literal(pstate s, scope *sc) {
 static presult parse_return(pstate s, scope *sc) {
   s++;
 
-  auto ret = std::make_shared<ast::return_node>(sc);
+  if (sc->fn == nullptr) throw syntax_error(s, "unexepcted return");
 
+  auto ret = std::make_shared<ast::return_node>(sc);
   if (s.first().type == tok_term) {
     return presult(ret, s);
   }
-
   auto es = parse_expr(s, sc);
-
   if (!es) {
     throw syntax_error(s, "");
   }
   s = es;
   ret->val = es;
+  sc->fn->returns.push_back(ret);
   return presult(ret, s);
 }
 

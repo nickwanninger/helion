@@ -6,10 +6,10 @@
 #define __HELION_AST_H__
 
 #include <helion/core.h>
+#include <helion/slice.h>
 #include <helion/text.h>
 #include <helion/tokenizer.h>
 #include <helion/util.h>
-#include <helion/slice.h>
 #include <vector>
 
 
@@ -74,7 +74,6 @@ namespace helion {
       virtual inline llvm::Value *codegen(cg_ctx &, cg_scope *) {
         return nullptr;
       }
-      // virtual void codegen(void);
     };
 
 
@@ -241,7 +240,7 @@ namespace helion {
       std::vector<std::shared_ptr<ast::var_decl>> caputures;
       std::shared_ptr<prototype> proto = nullptr;
       std::vector<std::shared_ptr<ast::node>> stmts;
-
+      std::vector<std::shared_ptr<ast::return_node>> returns;
       std::string name = "";
       bool anonymous = false;
       NODE_FOOTER;

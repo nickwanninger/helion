@@ -24,9 +24,8 @@ add_library(helion-obj OBJECT
 	lib/helion/gc.cpp
 	lib/helion/method.cpp
 	lib/helion/parser.cpp
-	# lib/helion/mid/basicblock.cpp
-	# lib/helion/mid/builder.cpp
-	# lib/helion/mid/value.cpp
+	lib/helion/iir.cpp
+	lib/helion/iirbuilder.cpp
 )
 
 target_include_directories(helion-obj PRIVATE ${LLVM_INCLUDE_DIRS})

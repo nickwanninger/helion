@@ -20,6 +20,8 @@
 #include <gc/gc.h>
 
 #include <helion/core.h>
+#include <helion/iir.h>
+
 #include <CLI11.hpp>
 
 using namespace helion;
@@ -29,6 +31,13 @@ extern "C" void GC_allow_register_threads();
 
 
 int main(int argc, char **argv) {
+
+
+  // start the garbage collector
+  GC_INIT();
+  GC_allow_register_threads();
+
+
   CLI::App app;
   std::string driver_path = ":NONE";
   std::string driver_opts = ":NONE";
@@ -44,11 +53,8 @@ int main(int argc, char **argv) {
 
   CLI11_PARSE(app, argc, argv);
 
-  // start the garbage collector
-  GC_INIT();
-  GC_allow_register_threads();
-  helion::init();
 
+  helion::init();
 
   const char *ep_ptr = entry_point.c_str();
   // check that the file exists before trying to read it
@@ -62,10 +68,24 @@ int main(int argc, char **argv) {
   // print every token from the file
   text src = read_file(ep_ptr);
 
+
+
+  /*
+  iir::module m;
+  iir::func f(m);
+  iir::builder b(f);
+  auto bb = f.new_block();
+  b.set_target(bb);
+  b.create_alloc(int32_type);
+  b.create_ret(iir::new_int(42));
+  f.print(std::cout);
+  */
+
+  // exit(0);
   try {
     auto res = parse_module(src, entry_point);
-    // puts(res->str());
-    compile_module(std::move(res));
+    puts(res->str());
+    // compile_module(std::move(res));
   } catch (syntax_error &e) {
     puts(e.what());
   }

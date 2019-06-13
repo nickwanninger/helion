@@ -18,6 +18,7 @@ datatype *helion::int8_type;
 datatype *helion::int16_type;
 datatype *helion::int32_type;
 datatype *helion::int64_type;
+datatype *helion::integer_type;
 datatype *helion::float32_type;
 datatype *helion::float64_type;
 datatype *helion::datatype_type;
@@ -30,23 +31,21 @@ static ska::flat_hash_map<llvm::Type *, datatype *> llvm_to_datatype_map;
 void helion::init_types(void) {
   // the base Any type has Any as a supertype (recursively)
   any_type = datatype::create("Any");
-
   bool_type = datatype::create_integer("Bool", 1);
   int8_type = datatype::create_integer("Byte", 8);
-  int16_type = datatype::create_integer("Short", 16);
-  int32_type = datatype::create_integer("Int", 32);
-  int64_type = datatype::create_integer("Long", 64);
+  int16_type = datatype::create_integer("Int16", 16);
+  int32_type = datatype::create_integer("Int32", 32);
+  int64_type = datatype::create_integer("Int64", 64);
+
+
+  integer_type = datatype::create_integer("Int", sizeof(size_t) * 8);
 
   float32_type = datatype::create_float("Float", 32);
   float64_type = datatype::create_float("Double", 64);
 
-  generic_ptr_type =
-      datatype::create("ptr", int8_type->to_llvm()->getPointerTo());
-
   datatype_type = datatype::create_struct("datatype");
-  datatype_type->add_field("specialized", bool_type);
-  datatype_type->add_field("completed", bool_type);
 }
+
 
 // line for line implementation of the subtype algorithm from the julia paper.
 // ([1209.5145v1] Julia: A Fast Dynamic Language for Technical, Algorithm 3)
@@ -251,72 +250,78 @@ void datatype::add_field(text name, datatype *type) {
 
 
 
-llvm::Type *datatype::to_llvm(void) {
+llvm::Type *datatype::to_llvm(bool for_storage) {
   if (type_decl != nullptr) return type_decl;
 
 
-  std::string s = str();
 
-  if (ti->style == type_style::INTEGER) {
-    type_decl = llvm::Type::getIntNTy(llvm_ctx, ti->bits);
-  } else if (ti->style == type_style::FLOATING) {
-    if (ti->bits == 32) {
-      type_decl = llvm::Type::getFloatTy(llvm_ctx);
-    } else if (ti->bits == 64) {
-      type_decl = llvm::Type::getDoubleTy(llvm_ctx);
-    } else {
-      throw std::logic_error("Floats must be 32 or 64 bit");
+  if (type_decl == nullptr) {
+    std::string name = str();
+
+    if (ti->style == type_style::INTEGER) {
+      type_decl = llvm::Type::getIntNTy(llvm_ctx, ti->bits);
+    } else if (ti->style == type_style::FLOATING) {
+      if (ti->bits == 32) {
+        type_decl = llvm::Type::getFloatTy(llvm_ctx);
+      } else if (ti->bits == 64) {
+        type_decl = llvm::Type::getDoubleTy(llvm_ctx);
+      } else {
+        throw std::logic_error("Floats must be 32 or 64 bit");
+      }
+    } else if (is_obj() || is_struct()) {
+      auto stct = llvm::StructType::create(llvm_ctx, name);
+      type_decl = stct;
+      std::string tname = str();
+      std::vector<llvm::Type *> flds;
+      // push back a voidptr type
+
+      if (is_obj()) {
+        // TODO(superclass): Add in superclass fields here.
+        // flds.push_back(any_type->to_llvm());
+      }
+      for (auto &f : fields) {
+        llvm::Type *field = f.type->to_llvm();
+        if (f.type->is_obj()) {
+          field = field->getPointerTo();
+        }
+        flds.push_back(field);
+      }
+      stct->setBody(flds);
+
+    } else if (ti->style == type_style::SLICE) {
+      auto stct = llvm::StructType::create(llvm_ctx, name);
+
+      std::vector<llvm::Type *> flds;
+
+      flds.push_back(llvm::Type::getInt32Ty(llvm_ctx));
+      flds.push_back(llvm::Type::getInt32Ty(llvm_ctx));
+
+      for (auto &f : fields) {
+        // get the type in storage form
+        flds.push_back(f.type->to_llvm(true));
+      }
+
+      type_decl = stct;
     }
-  } else if (is_obj() || is_struct()) {
-    auto stct = llvm::StructType::create(llvm_ctx, s);
-    type_decl = stct;
-    std::string tname = str();
-    std::vector<llvm::Type *> flds;
-    // push back a voidptr type
 
+    {
+      // lower the type to its lowest non-pointer
+      // version and store that in the global map
+      auto t = type_decl;
+      while (t->isPointerTy()) t = t->getPointerElementType();
+      llvm_to_datatype_map[t] = this;
+    }
+  }
+
+
+  // some types have to be changed for storage types
+  // A storage type is a type that is within a struct or on the stack
+  if (for_storage) {
     if (is_obj()) {
-      // TODO(superclass): Add in superclass fields here.
-      // flds.push_back(any_type->to_llvm());
+      return type_decl->getPointerTo();
     }
-    for (auto &f : fields) {
-      llvm::Type *field = f.type->to_llvm();
-      if (f.type->is_obj()) {
-        field = field->getPointerTo();
-      }
-      flds.push_back(field);
-    }
-    stct->setBody(flds);
-
-  } else if (ti->style == type_style::SLICE) {
-    auto stct = llvm::StructType::create(llvm_ctx, s);
-
-    std::vector<llvm::Type *> flds;
-
-    flds.push_back(llvm::Type::getInt32Ty(llvm_ctx));
-    flds.push_back(llvm::Type::getInt32Ty(llvm_ctx));
-
-    for (auto &f : fields) {
-      llvm::Type *field = f.type->to_llvm();
-      if (f.type->ti->style == type_style::OBJECT) {
-        field = field->getPointerTo();
-      }
-      flds.push_back(field->getPointerTo());
-    }
-
-    type_decl = stct;
+    return type_decl;
   }
-
-  {
-    // lower the type to its lowest non-pointer
-    // version and store that in the global map
-    auto t = type_decl;
-    while (t->isPointerTy()) t = t->getPointerElementType();
-    llvm_to_datatype_map[t] = this;
-  }
-
-
-  type_decl->print(llvm::errs());
-  puts();
   return type_decl;
 }
 
@@ -401,7 +406,6 @@ static datatype *spec_type_node(std::shared_ptr<ast::type_node> &tn,
     err += tn->name;
     throw std::logic_error(err);
   }
-
 
   // the only times we don't specialize on a type is when the names aren't the
   // same, and there are no parameters on the typenode

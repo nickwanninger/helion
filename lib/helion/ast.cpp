@@ -95,14 +95,14 @@ text ast::var_decl::str(int d) {
   text s;
 
   if (!is_arg) s += "let ";
-
   if (global) s += "global ";
 
-  if (type != nullptr) {
-    s += type->str();
-    s += " ";
-  }
   s += name;
+
+  if (type != nullptr) {
+    s += ": ";
+    s += type->str();
+  }
 
   if (value != nullptr) {
     s += " = ";
@@ -216,9 +216,6 @@ text ast::typeassert::str(int) {
 text ast::type_node::str(int) {
   text s;
 
-  if (parameter) s += "some ";
-  if (constant) s += "const ";
-
   if (style == type_style::OBJECT) {
     s += name;
     if (params.size() > 0) {
@@ -244,21 +241,17 @@ text ast::type_node::str(int) {
 
   if (style == type_style::METHOD) {
     assert(params.size() > 0);
-    s += "Fn{";
 
-    for (size_t i = 1; i < params.size(); i++) {
+    s += "(";
+
+    for (size_t i = 0; i < params.size(); i++) {
       auto& param = params[i];
       s += param->str();
       if (i < params.size() - 1) {
-        s += ", ";
+        s += " -> ";
       }
     }
-
-    if (params[0] != nullptr) {
-      s += " : ";
-      s += params[0]->str();
-    }
-    s += "}";
+    s += ")";
   }
 
 
@@ -289,7 +282,7 @@ text ast::prototype::str(int) {
 
   if (type != nullptr) {
     if (type->params[0] != nullptr) {
-      s += " : ";
+      s += ": ";
       s += type->params[0]->str();
     }
   }

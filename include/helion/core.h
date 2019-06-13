@@ -93,6 +93,7 @@ namespace helion {
   extern datatype *int16_type;
   extern datatype *int32_type;
   extern datatype *int64_type;
+  extern datatype *integer_type;
   extern datatype *float32_type;
   extern datatype *float64_type;
   extern datatype *datatype_type;
@@ -103,7 +104,7 @@ namespace helion {
   // a value is an opaque pointer to something garbage collected in the helion
   // jit runtime. It has no real meaning except as a better, typed replacement
   // for voidptr
-  struct value;
+  // struct value;
 
 
 
@@ -173,6 +174,8 @@ namespace helion {
     llvm::Type *type_decl = nullptr;
     slice<field> fields;
     slice<datatype *> param_types;
+    // used in the method type
+    datatype *return_type = nullptr;
 
     text mangled_name(void);
 
@@ -181,7 +184,7 @@ namespace helion {
      */
 
     void add_field(text, datatype *);
-    llvm::Type *to_llvm(void);
+    llvm::Type *to_llvm(bool for_storage = false);
 
     text str(void);
     // constructors
@@ -281,9 +284,9 @@ namespace helion {
 
   class cg_scope {
    protected:
-    std::unordered_map<std::string, datatype *> m_types;
-    std::unordered_map<std::string, std::unique_ptr<cg_binding>> m_bindings;
-    std::unordered_map<llvm::Value *, datatype *> m_val_types;
+    ska::flat_hash_map<std::string, datatype *> m_types;
+    ska::flat_hash_map<std::string, llvm::Value *> m_bindings;
+    ska::flat_hash_map<llvm::Value *, datatype *> m_val_types;
     cg_scope *m_parent;
 
     std::vector<std::unique_ptr<cg_scope>> children;
@@ -292,14 +295,18 @@ namespace helion {
     module *mod;
 
     cg_scope *spawn();
-    cg_binding *find_binding(std::string &name);
-    inline void set_binding(std::string name, std::unique_ptr<cg_binding> b) {
-      m_bindings[name] = std::move(b);
+    llvm::Value *find_binding(std::string &name);
+    inline void set_binding(std::string name, llvm::Value *v) {
+      m_bindings[name] = v;
     }
 
     // type lookups
     datatype *find_type(std::string);
-    inline void set_type(std::string name, datatype *T) { m_types[name] = T; }
+    inline void set_type(std::string name, datatype *T) {
+      // just store in the map
+      m_types[name] = T;
+    }
+    inline void set_type(datatype *T) { set_type(T->ti->name, T); }
 
     datatype *find_val_type(llvm::Value *);
     inline void set_val_type(llvm::Value *val, datatype *t) {

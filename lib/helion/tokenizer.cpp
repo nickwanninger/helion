@@ -80,7 +80,6 @@ token tokenizer::emit(uint8_t t, text v) {
     }
   }
 
-
   last_emit_ended = index;
   tokens->push_back(tok);
   return tok;
@@ -447,7 +446,14 @@ top:
   text symbol;
   symbol += c;
 
-  while (!in_charset(peek(), " ;\n\t(){}[],") &&
+  /*
+  if (peek() == ':') {
+    auto v = next();
+    symbol += v;
+  }
+  */
+
+  while (!in_charset(peek(), " :;\n\t(){}[],") &&
          !in_charset(peek(), operators)) {
     auto v = next();
     if ((int32_t)v == -1 || v == 0) break;
@@ -465,7 +471,7 @@ top:
   } else {
     // TODO(unicode)
     if (symbol[0] >= 'A' && symbol[0] <= 'Z') {
-      type = tok_type;
+      // type = tok_type;
     }
     if (symbol[0] == '@') {
       text s;
@@ -478,14 +484,16 @@ top:
     }
   }
 
+  /*
   // absorb question marks into symbols but not into types
   if (type != tok_type) {
-    while (peek() == '?') {
+    while (!in_charset(peek(), "?:")) {
       auto v = next();
       if ((int32_t)v == -1 || v == 0) break;
       symbol += v;
     }
   }
+  */
 
 
   static std::map<std::string, uint8_t> special_token_type_map = {

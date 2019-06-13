@@ -39,11 +39,11 @@ cg_scope *helion::cg_scope::spawn() {
 }
 
 
-cg_binding *cg_scope::find_binding(std::string &name) {
+llvm::Value *cg_scope::find_binding(std::string &name) {
   auto *sc = this;
   while (sc != nullptr) {
     if (sc->m_bindings.count(name) != 0) {
-      return sc->m_bindings[name].get();
+      return sc->m_bindings[name];
     }
     sc = sc->m_parent;
   }
@@ -150,10 +150,21 @@ void helion::init_codegen(void) {
 
   global_scope = std::make_unique<cg_scope>();
 
-  // Fill out the builtin types into the global scope
-  global_scope->set_type("Any", any_type);
-  global_scope->set_type("Int", int32_type);
-  global_scope->set_type("Float", float32_type);
+
+  global_scope->set_type(any_type);
+
+
+  global_scope->set_type(bool_type);
+  global_scope->set_type(int8_type);
+  global_scope->set_type(int16_type);
+  global_scope->set_type(int32_type);
+  global_scope->set_type(int64_type);
+  global_scope->set_type(integer_type);
+  // Float type
+  global_scope->set_type(float32_type);
+  // Double Type
+  global_scope->set_type(float64_type);
+  global_scope->set_type(datatype_type);
 }
 
 
@@ -195,6 +206,7 @@ static void init_llvm_env() {
 
 
 static datatype *declare_type(std::shared_ptr<ast::typedef_node>, cg_scope *);
+static method *declare_func_def(std::shared_ptr<ast::def>, cg_scope *);
 
 
 
@@ -266,6 +278,11 @@ static datatype *declare_type(std::shared_ptr<ast::typedef_node> n,
 
 
 
+// declare a 
+static method *declare_func_def(std::shared_ptr<ast::def>, cg_scope *) {
+
+  return nullptr;
+}
 /**
  * attempt to pattern match the parameters of the two types.
  * This basically just requires that the two types have the same

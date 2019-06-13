@@ -31,6 +31,7 @@
 #ifndef HELION_HH
 #define HELION_HH
 
+#include "helion/iir.h"
 #include "helion/core.h"
 #include "helion/text.h"
 #include "helion/types.h"
