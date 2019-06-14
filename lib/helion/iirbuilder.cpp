@@ -15,13 +15,11 @@ iir::builder::builder(func &f) : current_func(f) {}
 void iir::builder::set_target(block *b) { target = b; }
 
 
-value *iir::builder::create_alloc(datatype *d) {
+value *iir::builder::create_alloc(type &d) {
   return create_inst(inst_type::alloc, d);
 }
 
 void iir::builder::create_ret(value *v) {
-  // add the type of this value to the function's return types
-  current_func.return_types.insert(v->get_type());
   // and create the inst
   create_inst(inst_type::ret, v->get_type(), {v});
 }
@@ -33,15 +31,29 @@ instruction *builder::add_inst(instruction *i) {
 }
 
 
-instruction *builder::create_inst(inst_type it, datatype *dt) {
+instruction *builder::create_inst(inst_type it, type &dt) {
   assert(target != nullptr);
   auto i = gc::make_collected<instruction>(*target, it, dt);
   return add_inst(i);
 }
 
-instruction *builder::create_inst(inst_type it, datatype *dt,
-                                  slice<value *> as) {
+instruction *builder::create_inst(inst_type it, type &dt, slice<value *> as) {
   assert(target != nullptr);
   auto i = gc::make_collected<instruction>(*target, it, dt, as);
   return add_inst(i);
+}
+
+
+
+value *builder::create_binary(inst_type t, value *l, value *r) {
+  return create_inst(t, new_variable_type(), {l, r});
+}
+
+
+void builder::create_branch(value *cond, block *if_true, block *if_false) {
+  create_inst(inst_type::br, new_variable_type(), {cond, if_true, if_false});
+}
+
+void builder::create_jmp(block *b) {
+  create_inst(inst_type::jmp, new_variable_type(), {b});
 }

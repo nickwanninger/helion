@@ -31,8 +31,6 @@ extern "C" void GC_allow_register_threads();
 
 
 int main(int argc, char **argv) {
-
-
   // start the garbage collector
   GC_INIT();
   GC_allow_register_threads();
@@ -56,6 +54,7 @@ int main(int argc, char **argv) {
 
   helion::init();
 
+
   const char *ep_ptr = entry_point.c_str();
   // check that the file exists before trying to read it
   struct stat sinfo;
@@ -65,27 +64,14 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+
   // print every token from the file
   text src = read_file(ep_ptr);
 
-
-
-  /*
-  iir::module m;
-  iir::func f(m);
-  iir::builder b(f);
-  auto bb = f.new_block();
-  b.set_target(bb);
-  b.create_alloc(int32_type);
-  b.create_ret(iir::new_int(42));
-  f.print(std::cout);
-  */
-
-  // exit(0);
   try {
     auto res = parse_module(src, entry_point);
     puts(res->str());
-    // compile_module(std::move(res));
+    compile_module(std::move(res));
   } catch (syntax_error &e) {
     puts(e.what());
   }

@@ -4,6 +4,9 @@
 
 #pragma once
 
+#ifndef __SKA_FLAT_MAP_H
+#define __SKA_FLAT_MAP_H
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -1724,3 +1727,7 @@ namespace ska {
   };
 
 }  // end namespace ska
+
+
+
+#endif

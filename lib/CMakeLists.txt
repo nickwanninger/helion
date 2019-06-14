@@ -26,6 +26,8 @@ add_library(helion-obj OBJECT
 	lib/helion/parser.cpp
 	lib/helion/iir.cpp
 	lib/helion/iirbuilder.cpp
+	lib/helion/iirgen.cpp
+	lib/helion/typesystem.cpp
 )
 
 target_include_directories(helion-obj PRIVATE ${LLVM_INCLUDE_DIRS})

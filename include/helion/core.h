@@ -61,6 +61,8 @@
 #include <unordered_map>
 #include "slice.h"
 #include "util.h"
+
+
 /*
  * this header file defines the core classes and data types used throughout the
  * helion compiler and jit runtime. For example, the module type, the basic type
@@ -234,6 +236,9 @@ namespace helion {
       return ti->specialize(s, sc);
     }
   };
+
+
+
 
 
 
@@ -563,11 +568,11 @@ namespace helion {
 
   void init_types(void);
   void init_codegen(void);
+  void init_iir(void);
 
 
   inline void init() {
-    // initialize the types before the codegen, because the codegen will require
-    // the the builtin types.
+    init_iir();
     init_types();
     init_codegen();
   }

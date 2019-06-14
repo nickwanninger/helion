@@ -13,6 +13,7 @@ using namespace helion;
 
 
 
+/*
 llvm::Function *helion::compile_method(method_instance *mi, cg_scope *s,
                                        llvm::Module *m) {
   cg_ctx ctx(llvm_ctx);
@@ -126,4 +127,4 @@ llvm::Value *ast::typedef_node::codegen(cg_ctx &ctx, cg_scope *sc) {
 llvm::Value *ast::typeassert::codegen(cg_ctx &ctx, cg_scope *sc) {
   return nullptr;
 }
-
+*/

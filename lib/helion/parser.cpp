@@ -17,6 +17,7 @@ static std::atomic<int> next_type_num;
 
 
 static text get_next_param_name(void) {
+  die("param types are disabled");
   text name = "t";
   name += std::to_string(next_type_num++);
   return name;
@@ -706,13 +707,10 @@ static presult parse_type(pstate s, scope *sc, bool follow_arrows) {
       throw syntax_error(s,
                          "Slice type needs a type within the square brackets");
     }
-
     s = tr;
-
     if (s.first().type != tok_right_square) {
       throw syntax_error(s, "unclosed square brackets");
     }
-
     s++;
 
     type = std::make_shared<ast::type_node>(sc);
@@ -756,24 +754,28 @@ FINALIZE:
 
   // after a type, if there is an arrow we need to absorb it
   if (follow_arrows) {
-    puts("here");
     if (s.first().type == tok_arrow) {
       auto ftype = std::make_shared<ast::type_node>(sc);
       ftype->style = type_style::METHOD;
 
       ftype->params.push_back(type);
       while (s.first().type == tok_arrow) {
-        puts("arrow");
         s++;
         // parse the type and do not follow the arrow
         auto tres = parse_type(s, sc, false);
         if (!tres) throw syntax_error(s, "invalid method type");
-        ftype->params.push_back(tres.as<ast::type_node>());
+
+        auto ty = tres.as<ast::type_node>();
+        s = tres;
+        ftype->params.push_back(ty);
       }
-      s++;
+
       type = ftype;
     }
   }
+
+
+
 
   /*
   // absorb optional question marks
@@ -787,6 +789,8 @@ FINALIZE:
   }
   */
 
+  if (type->parameter) throw std::logic_error("param types are disabled");
+
   return presult(type, s);
 }
 
@@ -796,7 +800,8 @@ std::shared_ptr<ast::type_node> ast::parse_type(text src) {
   pstate state(t, 0);
   scope s;
   auto res = ::parse_type(state, &s);
-  return res.as<ast::type_node>();
+  auto tn = res.as<ast::type_node>();
+  return tn;
 }
 
 
@@ -820,6 +825,7 @@ static presult parse_prototype(pstate s, scope *sc) {
   auto proto = std::make_shared<ast::prototype>(sc);
 
   std::shared_ptr<ast::type_node> return_type = nullptr;
+
   std::vector<std::shared_ptr<ast::type_node>> argument_types;
 
   while (true) {
@@ -856,6 +862,7 @@ static presult parse_prototype(pstate s, scope *sc) {
     if (atype == nullptr) {
       atype = get_next_param_type(sc);
     }
+
 
 
     argument_types.push_back(atype);
@@ -901,10 +908,11 @@ static presult parse_prototype(pstate s, scope *sc) {
 
   auto ftype = std::make_shared<ast::type_node>(sc);
 
-  ftype->params.push_back(return_type);
   for (auto &p : argument_types) {
     ftype->params.push_back(p);
   }
+
+  ftype->params.push_back(return_type);
   ftype->style = type_style::METHOD;
 
   proto->type = ftype;
@@ -1169,8 +1177,6 @@ static presult parse_let(pstate s, scope *sc) {
 
   auto decl = std::make_shared<ast::var_decl>(sc);
 
-
-
   if (s.first().type == tok_global) {
     decl->global = true;
     s++;
@@ -1178,20 +1184,7 @@ static presult parse_let(pstate s, scope *sc) {
 
   if (sc->global) decl->global = true;
 
-  // attempt to parse a type
-  auto tp = parse_type(s, sc);
 
-
-
-
-  bool has_type = false;
-  if (tp) {
-    has_type = true;
-    decl->type = tp.as<ast::type_node>();
-    s = tp;
-  } else {
-    decl->type = get_next_param_type(sc);
-  }
 
   if (s.first().type != tok_var) {
     throw syntax_error(s, "unexpected token");
@@ -1199,6 +1192,27 @@ static presult parse_let(pstate s, scope *sc) {
 
   decl->name = s.first().val;
   s++;
+
+  bool has_type = false;
+  if (s.first().type == tok_colon) {
+    s++;
+
+    // attempt to parse a type
+    auto tp = parse_type(s, sc);
+
+
+    if (tp) {
+      has_type = true;
+      decl->type = tp.as<ast::type_node>();
+      s = tp;
+    }
+  }
+
+  if (!has_type) {
+    decl->type = get_next_param_type(sc);
+  }
+
+
 
 
   if (s.first().type == tok_assign) {

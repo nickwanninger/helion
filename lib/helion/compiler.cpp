@@ -7,7 +7,7 @@
 #include <helion/gc.h>
 #include <iostream>
 #include <unordered_map>
-
+#include <helion/iir.h>
 using namespace helion;
 
 
@@ -222,7 +222,43 @@ static ska::flat_hash_map<text, datatype *> datatypes_from_names;
  * executable code and all the state needed for execution
  */
 module *helion::compile_module(std::unique_ptr<ast::module> m) {
+
   auto mod = std::make_unique<module>();
+  // imod is a module in the intermediate representation
+  iir::module imod("something");
+
+
+  imod.create_intrinsic("__intrinsic_add", ast::parse_type("Int -> Int -> Int"))->print(std::cout);
+
+
+  puts();
+
+  for (auto &def : m->defs) {
+    // first, we go through and declare all of the methods
+    auto *fn = imod.create_func(def->fn);
+
+    imod.bind(fn->name, fn);
+
+
+    auto scp = imod.spawn();
+
+
+    iir::builder b(*fn);
+
+    auto bb = fn->new_block();
+    fn->add_block(bb);
+    b.set_target(bb);
+
+    for (auto &e : def->fn->stmts) {
+      e->to_iir(b, scp);
+    }
+
+    // go through the expressions in the function and compile them with the builder
+    fn->print(std::cout);
+    puts();
+  }
+
+  /*
   // setup the scope for this module
   mod->scope = global_scope->spawn();
   mod->scope->mod = mod.get();
@@ -239,6 +275,8 @@ module *helion::compile_module(std::unique_ptr<ast::module> m) {
   auto NodeNodeInt = Node->specialize({NodeInt}, mod->scope);
 
   NodeNodeInt->to_llvm();
+
+  */
 
 
   return nullptr;

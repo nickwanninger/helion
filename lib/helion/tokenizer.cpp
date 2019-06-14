@@ -73,13 +73,9 @@ token tokenizer::get(size_t i) {
 
 token tokenizer::emit(uint8_t t, text v) {
   token tok(t, v, source, line, column);
-
-  if (last_emit_ended != -1) {
-    if (is_space(source->operator[](last_emit_ended - 1))) {
+  if (last_emit_ended != -1)
+    if (is_space(source->operator[](last_emit_ended - 1)))
       tok.space_before = true;
-    }
-  }
-
   last_emit_ended = index;
   tokens->push_back(tok);
   return tok;
@@ -215,12 +211,7 @@ top:
 
 #endif
 
-
   int32_t c = next();
-
-  // std::cout << "LINE:" << get_line(index) << std::endl;
-
-
 
   // newlines and semicolons are considered 'terminator' characters.
   // they signify the end of a line or other construct
@@ -352,12 +343,8 @@ top:
   // parse a number
   if (isdigit(c) || c == '.' || (c == '-' && isdigit(peek()))) {
     // it's a number (or it should be) so we should parse it as such
-
     text buf;
-
     buf += c;
-    // bool has_decimal = c == '.';
-
 
     /*
     if (peek() == 'x') {
@@ -370,9 +357,6 @@ top:
       auto s = std::to_string(x);
       return emit(tok_num, s);
     }
-
-
-
 
     if (peek() == 'b') {
       next();
@@ -445,6 +429,7 @@ top:
 
   text symbol;
   symbol += c;
+
 
   /*
   if (peek() == ':') {

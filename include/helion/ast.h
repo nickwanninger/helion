@@ -5,12 +5,13 @@
 #ifndef __HELION_AST_H__
 #define __HELION_AST_H__
 
-#include <helion/core.h>
-#include <helion/slice.h>
-#include <helion/text.h>
-#include <helion/tokenizer.h>
-#include <helion/util.h>
 #include <vector>
+#include "core.h"
+#include "iir.h"
+#include "slice.h"
+#include "text.h"
+#include "tokenizer.h"
+#include "util.h"
 
 
 namespace llvm {
@@ -25,8 +26,6 @@ namespace helion {
 
   // forward declaration
   class cg_ctx;
-  class cg_scope;
-
 
 
 
@@ -37,10 +36,10 @@ namespace helion {
   namespace ast {
 
 
-#define NODE_FOOTER                           \
- public:                                      \
-  using node::node;                           \
-  llvm::Value *codegen(cg_ctx &, cg_scope *); \
+#define NODE_FOOTER                               \
+ public:                                          \
+  using node::node;                               \
+  iir::value *to_iir(iir::builder &, iir::scope *); \
   text str(int depth = 0);
 
     // @abstract, all ast::nodes extend from this publically
@@ -71,7 +70,7 @@ namespace helion {
 
       virtual text str(int depth = 0) { return ""; };
 
-      virtual inline llvm::Value *codegen(cg_ctx &, cg_scope *) {
+      virtual inline iir::value *to_iir(iir::builder &, iir::scope *) {
         return nullptr;
       }
     };
@@ -203,7 +202,7 @@ namespace helion {
       text name;
       std::shared_ptr<ast::node> value;
       text str(int = 0);
-      llvm::Value *codegen(cg_ctx &, cg_scope *);
+      iir::value *to_iir(iir::builder &, iir::scope *);
     };
 
 
@@ -222,12 +221,8 @@ namespace helion {
     class prototype : public node {
      public:
       std::vector<std::shared_ptr<var_decl>> args;
-
-
       std::shared_ptr<type_node> type;
-
       // rc<type_node> return_type;
-
       NODE_FOOTER;
     };
 
@@ -237,7 +232,7 @@ namespace helion {
     class func : public node {
      public:
       // a vector of the variables which this function captures
-      std::vector<std::shared_ptr<ast::var_decl>> caputures;
+      std::vector<std::shared_ptr<ast::var_decl>> captures;
       std::shared_ptr<prototype> proto = nullptr;
       std::vector<std::shared_ptr<ast::node>> stmts;
       std::vector<std::shared_ptr<ast::return_node>> returns;
