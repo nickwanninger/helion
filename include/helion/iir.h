@@ -35,7 +35,6 @@ namespace helion {
 
     // forward declarations
     class named_type;
-    class method_type;
     class var_type;
     class value;
     class scope;
@@ -48,42 +47,33 @@ namespace helion {
 
      public:
       inline bool is_named(void) { return t == type_type::named; };
-      inline bool is_method(void) { return t == type_type::method; };
       inline bool is_var(void) { return t == type_type::var; };
 
       named_type *as_named(void);
-      method_type *as_method(void);
       var_type *as_var(void);
       inline virtual std::string str(void) = 0;
     };
 
     class named_type : public type {
       type_type t = type_type::named;
-      std::string m_name;
-      std::vector<type *> m_params;
 
      public:
-      inline named_type(std::string name) : m_name(name) {}
+      std::string name;
+      std::vector<type *> params;
+
+      inline named_type(std::string name) : name(name) {}
       inline named_type(std::string name, std::vector<type *> params)
-          : m_name(name), m_params(params) {}
+          : name(name), params(params) {}
       std::string str(void);
     };
 
-    class method_type : public type {
-      type_type t = type_type::method;
-      std::vector<type *> m_types;
-
-     public:
-      inline method_type(std::vector<type *> types) : m_types(types) {
-        // assert(m_types.size() >= 2);
-      }
-      std::string str(void);
-    };
 
     class var_type : public type {
+      type_type t = type_type::var;
+
      public:
-      type &points_to = *this;
       std::string name;
+      type &points_to = *this;
       inline var_type(std::string name) : name(name) {}
       std::string str(void);
     };
@@ -129,21 +119,6 @@ namespace helion {
       inline void bind(std::string name, value *v) { m_bindings[name] = v; }
     };
 
-    // an iir module is what is produced out of a
-    class module : public scope {
-      std::string name;
-      scope *mod_scope;
-
-      module *mod = this;
-
-     public:
-      module(std::string name);
-      // creates a function
-      func *create_func(std::shared_ptr<ast::func>);
-      // create an intrinsic function which will call to a special part of the
-      // compiler once we get to this stage
-      func *create_intrinsic(std::string name, std::shared_ptr<ast::type_node>);
-    };
 
 
     class value {
@@ -186,6 +161,7 @@ namespace helion {
       ret,
       br,
       jmp,
+      global,
       call,
       add,
       sub,
@@ -272,6 +248,25 @@ namespace helion {
     };
 
 
+
+    // an iir module is what is produced out of a
+    class module : public scope {
+      std::string name;
+      scope *mod_scope;
+      module *mod = this;
+
+     public:
+      std::vector<value *> globals;
+
+      module(std::string name);
+      // creates a function
+      func *create_func(std::shared_ptr<ast::func>);
+      // create an intrinsic function which will call to a special part of the
+      // compiler once we get to this stage
+      func *create_intrinsic(std::string name, std::shared_ptr<ast::type_node>);
+    };
+
+
     // A builder is used to add instructions to a block
     //
     // implemented in irbuilder.cpp
@@ -295,6 +290,11 @@ namespace helion {
       void set_target(block *);
 
       value *create_alloc(type &);
+      value *create_global(type &);
+      void create_store(value *, value *);
+      value *create_load(value *);
+
+
       void create_ret(value *);
 
       value *create_binary(inst_type, value *, value *);
@@ -303,7 +303,7 @@ namespace helion {
       void create_jmp(block *);
 
 
-      inline void insert_block(block *b) {current_func.add_block(b);}
+      inline void insert_block(block *b) { current_func.add_block(b); }
       inline block *new_block(void) { return current_func.new_block(); }
     };
 

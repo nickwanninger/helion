@@ -27,6 +27,8 @@ iir::value *ast::number::to_iir(iir::builder &b, iir::scope *sc) {
 iir::value *ast::binary_op::to_iir(iir::builder &b, iir::scope *sc) {
   auto lhs = left->to_iir(b, sc);
   auto rhs = right->to_iir(b, sc);
+
+
   if (this->op == "+") return b.create_binary(iir::inst_type::add, rhs, lhs);
   if (this->op == "-") return b.create_binary(iir::inst_type::sub, rhs, lhs);
   if (this->op == "*") return b.create_binary(iir::inst_type::mul, rhs, lhs);
@@ -83,7 +85,12 @@ iir::value *ast::type_node::to_iir(iir::builder &b, iir::scope *sc) {
 }
 
 iir::value *ast::var_decl::to_iir(iir::builder &b, iir::scope *sc) {
-  return nullptr;
+  auto *v = value->to_iir(b, sc);
+
+  auto *glob = b.create_global(v->get_type());
+  sc->bind(name, v);
+  b.create_store(glob, v);
+  return v;
 }
 
 

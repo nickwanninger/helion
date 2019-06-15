@@ -44,6 +44,7 @@ tokens = [
 
     "assign",
     "arrow",
+    "fat_arrow",
     "pipe",
     "equal",
     "notequal",

@@ -393,13 +393,13 @@ top:
 
 
   static std::map<std::string, uint8_t> op_mappings = {
-      {"=", tok_assign},  {"==", tok_equal},   {"!=", tok_notequal},
-      {">", tok_gt},      {">=", tok_gte},     {"<", tok_lt},
-      {"<=", tok_lte},    {"+", tok_add},      {"-", tok_sub},
-      {"*", tok_mul},     {"/", tok_div},      {".", tok_dot},
-      {"->", tok_arrow},  {"|", tok_pipe},     {",", tok_comma},
-      {"%", tok_mod},     {"::", tok_is_type}, {":", tok_colon},
-      {"?", tok_question}};
+      {"=", tok_assign}, {"==", tok_equal},     {"!=", tok_notequal},
+      {">", tok_gt},     {">=", tok_gte},       {"<", tok_lt},
+      {"<=", tok_lte},   {"+", tok_add},        {"-", tok_sub},
+      {"*", tok_mul},    {"/", tok_div},        {".", tok_dot},
+      {"->", tok_arrow}, {"=>", tok_fat_arrow}, {"|", tok_pipe},
+      {",", tok_comma},  {"%", tok_mod},        {"::", tok_is_type},
+      {":", tok_colon},  {"?", tok_question}};
 
 
   if (in_charset(c, operators)) {

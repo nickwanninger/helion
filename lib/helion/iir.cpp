@@ -18,7 +18,7 @@ type *float_type = nullptr;
 
 void helion::init_iir(void) {
   int_type = gc::make_collected<named_type>("Int");
-  float_type = gc::make_collected<named_type>("Int");
+  float_type = gc::make_collected<named_type>("Float");
 }
 
 
@@ -83,7 +83,9 @@ void instruction::print(std::ostream &s, bool just_name, int depth) {
 
 
   s << inst_type_to_str(itype);
-  s << " ";
+  s << ".";
+  s << get_type().str();
+  s << "  ";
   for (int i = 0; i < args.size(); i++) {
     args[i]->print(s, true);
     if (i < args.size() - 1) s << ", ";
@@ -138,7 +140,7 @@ void func::print(std::ostream &s, bool just_name, int depth) {
 
 void block::print(std::ostream &s, bool just_name, int depth) {
   if (just_name) {
-    s << "&";
+    s << "&bb.";
     s << std::to_string(id);
     return;
   }
@@ -147,7 +149,7 @@ void block::print(std::ostream &s, bool just_name, int depth) {
   for (int i = 0; i < depth; i++) indent += " ";
 
   s << indent;
-  s << "&";
+  s << "&bb.";
   s << std::to_string(id);
   s << ":";
   for (int i = 0; i < insts.size(); i++) {
@@ -155,10 +157,8 @@ void block::print(std::ostream &s, bool just_name, int depth) {
     s << indent;
     s << "  ";
     insts[i]->print(s, false, depth + 1);
-    if (i < insts.size() - 1) {
-      // s << "\n";
-    }
   }
+  s << "\n";
 }
 
 
@@ -180,6 +180,7 @@ const char *iir::inst_type_to_str(inst_type t) {
     handle(ret);
     handle(br);
     handle(jmp);
+    handle(global);
     handle(call);
     handle(add);
     handle(sub);

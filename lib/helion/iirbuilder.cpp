@@ -57,3 +57,18 @@ void builder::create_branch(value *cond, block *if_true, block *if_false) {
 void builder::create_jmp(block *b) {
   create_inst(inst_type::jmp, new_variable_type(), {b});
 }
+
+
+value *builder::create_global(type &t) {
+  return create_inst(inst_type::global, t);
+}
+
+
+
+void builder::create_store(value *dst, value *val) {
+  create_inst(inst_type::store, dst->get_type(), {dst, val});
+}
+
+value *builder::create_load(value *from) {
+  return create_inst(inst_type::load, from->get_type());
+}

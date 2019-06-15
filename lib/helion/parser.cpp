@@ -2,6 +2,7 @@
 // MIT - See LICENSE.md file in the package.
 
 #include <helion/ast.h>
+#include <helion/core.h>
 #include <helion/parser.h>
 #include <helion/pstate.h>
 #include <atomic>
@@ -9,19 +10,10 @@
 
 
 
-
 using namespace helion;
 
 
 static std::atomic<int> next_type_num;
-
-
-static text get_next_param_name(void) {
-  die("param types are disabled");
-  text name = "t";
-  name += std::to_string(next_type_num++);
-  return name;
-}
 
 
 static std::shared_ptr<ast::type_node> get_next_param_type(scope *s) {
@@ -34,6 +26,33 @@ static std::shared_ptr<ast::type_node> get_next_param_type(scope *s) {
 ast::module::module() { m_scope = std::make_unique<scope>(); }
 
 scope *ast::module::get_scope(void) { return m_scope.get(); }
+
+
+
+
+static std::shared_ptr<ast::type_node> make_function_type(
+    std::vector<std::shared_ptr<ast::type_node>> &a, scope *sc) {
+  assert(a.size() >= 2);
+
+  auto t = std::make_shared<ast::type_node>(sc);
+  t->name = "->";
+  t->params = {nullptr, a.back()};
+
+  for (int i = a.size() - 2; i > 0; i--) {
+    t->params[0] = a[i];
+
+
+    auto nt = std::make_shared<ast::type_node>(sc);
+    nt->name = "->";
+    nt->params = {nullptr, t};
+    t = nt;
+  }
+
+  t->params[0] = a[0];
+
+  return t;
+}
+
 
 
 /**
@@ -103,10 +122,32 @@ std::unique_ptr<ast::module> helion::parse_module(pstate s) {
       for (auto v : r.vals) {
         if (auto tn = std::dynamic_pointer_cast<ast::typedef_node>(v); tn) {
           mod->typedefs.push_back(tn);
-        } else if (auto tn = std::dynamic_pointer_cast<ast::def>(v); tn) {
-          mod->defs.push_back(tn);
-        } else {
-          stmts.push_back(v);
+        } else { /*
+           if (false && auto tn = std::dynamic_pointer_cast<ast::var_decl>(v);
+           tn) {
+             // adding lets to the top level needs to do some special things...
+             // First, we need to peel the value out of the decl, and put it in
+             // an explicit assignment later on. this is so you can logically
+             // use a variable before it is actually defined in the top level
+
+             auto val = tn->value;
+             tn->value = nullptr;
+
+             mod->globals.push_back(tn);
+
+             auto var = std::make_shared<ast::var>(tn->scp);
+             var->decl = tn;
+             auto assignment = std::make_shared<ast::binary_op>(tn->scp);
+             assignment->left = var;
+             assignment->right = val;
+             assignment->op = "=";
+
+
+             mod->stmts.push_back(assignment);
+           } else {
+           */
+          mod->stmts.push_back(v);
+          // }
         }
       }
 
@@ -128,6 +169,7 @@ std::unique_ptr<ast::module> helion::parse_module(pstate s) {
   }
 
 
+  /*
   auto entry = std::make_shared<ast::def>(mod->get_scope());
 
   entry->fn = std::make_shared<ast::func>(mod->get_scope());
@@ -137,6 +179,7 @@ std::unique_ptr<ast::module> helion::parse_module(pstate s) {
   entry->fn->anonymous = true;
 
   mod->entry = entry;
+  */
 
   return mod;
 }
@@ -645,23 +688,122 @@ static presult parse_do(pstate s, scope *sc) {
  * parse a type out into the special type representation.
  * This function absorbs the generic syntax as well
  */
-static presult parse_type(pstate s, scope *sc, bool follow_arrows) {
-  bool constant = false;
-  bool param = false;
-
-
+static presult parse_type(pstate s, scope *sc, bool absorb_params) {
   std::shared_ptr<ast::type_node> type;
 
+  static auto is_type_token = [](token t) -> bool {
+    return t.type == tok_var || t.type == tok_left_paren ||
+           t.type == tok_left_square;
+  };
 
-  auto open = tok_left_curly;
-  auto close = tok_right_curly;
+
+  std::string name;
+  bool param = false;
+  std::vector<std::shared_ptr<ast::type_node>> params;
 
 
+  if (!is_type_token(s.first())) {
+    return pfail(s);
+  }
+
+
+  if (s.first().type == tok_left_square) {
+    s++;
+    auto t = parse_type(s, sc);
+    if (!t) {
+      throw syntax_error(s, "failed to parse type");
+    }
+    s = t;
+    if (s.first().type != tok_right_square)
+      throw syntax_error(s, "missing closing right square bracket");
+
+    s++;
+    name = "List";
+    params.push_back(t.as<ast::type_node>());
+  } else if (s.first().type == tok_left_paren) {
+    s++;
+    // special tuple ident
+    name = "()";
+
+    while (s.first().type != tok_right_paren) {
+      auto p = parse_type(s, sc);
+
+      if (!p) throw syntax_error(s, "failed to parse type in parenthesis");
+      s = p;
+      params.push_back(p.as<ast::type_node>());
+      if (s.first().type == tok_comma) s++;
+    }
+    s++;
+
+
+    if (params.size() == 0)
+      throw syntax_error(s, "empty parens in type invalid");
+
+    if (params.size() == 1) {
+      return presult(params[0], s);
+    }
+
+  } else if (s.first().type == tok_var) {
+    name = s.first().val;
+
+
+    // check for parameter-ness
+    param = true;
+    if (name[0] >= 'A' && name[0] <= 'Z') {
+      param = false;
+    }
+
+    s++;
+
+
+    // absorb any parameters
+    while (absorb_params && is_type_token(s.first())) {
+      if (param)
+        throw syntax_error(s, "cannot parameterize on parameter types");
+
+      auto t = parse_type(s, sc, false);
+      if (!t) {
+        throw syntax_error(s, "failed to parse type");
+      }
+      s = t;
+      params.push_back(t.as<ast::type_node>());
+    }
+  }
+
+
+  type = std::make_shared<ast::type_node>(sc);
+  type->name = name;
+  type->style = type_style::OBJECT;
+  type->parameter = param;
+  type->params = params;
+
+
+  if (s.first().type == tok_arrow) {
+    s++;
+    auto ret = parse_type(s, sc);
+    if (!ret) throw syntax_error(s, "failed to parse function type");
+    s = ret;
+    auto fn = std::make_shared<ast::type_node>(sc);
+    fn->name = "->";
+    fn->style = type_style::OBJECT;
+    fn->params = {type, ret.as<ast::type_node>()};
+    return presult(fn, s);
+  }
+
+
+
+  return presult(type, s);
+
+
+  /*
   // base case, actual type parsing
   if (s.first().type == tok_var) {
     auto name = s.first().val;
-    if (!(name[0] >= 'A' && name[0] <= 'Z')) {
-      param = true;
+
+    // check for parameter-ness
+    param = true;
+    if (name[0] >= 'A' && name[0] <= 'Z') {
+      param = false;
     }
 
     type = std::make_shared<ast::type_node>(sc);
@@ -775,6 +917,7 @@ FINALIZE:
   }
 
 
+  */
 
 
   /*
@@ -789,7 +932,7 @@ FINALIZE:
   }
   */
 
-  if (type->parameter) throw std::logic_error("param types are disabled");
+  // if (type->parameter) throw std::logic_error("param types are disabled");
 
   return presult(type, s);
 }
@@ -817,6 +960,8 @@ std::shared_ptr<ast::type_node> ast::parse_type(text src) {
  */
 static presult parse_prototype(pstate s, scope *sc) {
   bool expect_closing_paren = s.first().type == tok_left_paren;
+
+  if (!expect_closing_paren) return pfail(s);
 
   // skip over the possible left paren
   if (expect_closing_paren) s++;
@@ -904,19 +1049,8 @@ static presult parse_prototype(pstate s, scope *sc) {
   for (auto a : proto->args) {
     sc->bind(a->name, a);
   }
-
-
-  auto ftype = std::make_shared<ast::type_node>(sc);
-
-  for (auto &p : argument_types) {
-    ftype->params.push_back(p);
-  }
-
-  ftype->params.push_back(return_type);
-  ftype->style = type_style::METHOD;
-
-  proto->type = ftype;
-
+  argument_types.push_back(return_type);
+  proto->type = make_function_type(argument_types, sc);
   return presult(proto, s);
 }
 
@@ -944,7 +1078,7 @@ static presult parse_function_literal(pstate s, scope *sc) {
 
   bool valid = false;
 
-  if (s.first().type == tok_arrow) {
+  if (s.first().type == tok_fat_arrow) {
     s++;
     valid = true;
   }
@@ -977,7 +1111,7 @@ static presult parse_function_literal(pstate s, scope *sc) {
 static presult parse_return(pstate s, scope *sc) {
   s++;
 
-  if (sc->fn == nullptr) throw syntax_error(s, "unexepcted return");
+  if (sc->fn == nullptr) throw syntax_error(s, "unexpected return");
 
   auto ret = std::make_shared<ast::return_node>(sc);
   if (s.first().type == tok_term) {
@@ -1050,8 +1184,7 @@ static presult parse_if(pstate s, scope *sc) {
 
 
 static presult parse_def(pstate s, scope *sc) {
-  auto n = std::make_shared<ast::def>(sc);
-
+  auto n = std::make_shared<ast::var_decl>(sc);
 
   auto start_token = s.first();
 
@@ -1059,12 +1192,12 @@ static presult parse_def(pstate s, scope *sc) {
   // enter a new scope and construct a function object to represent this def's
   // information
   sc = sc->spawn();
-  n->fn = std::make_shared<ast::func>(sc);
-  sc->fn = n->fn;
+  auto fn = std::make_shared<ast::func>(sc);
+  sc->fn = fn;
 
   s++;
   if (s.first().type == tok_var) {
-    n->fn->name = s.first().val;
+    fn->name = s.first().val;
   } else {
     throw syntax_error(s, "invalid name for function");
   }
@@ -1073,20 +1206,20 @@ static presult parse_def(pstate s, scope *sc) {
   auto protor = parse_prototype(s, sc);
 
 
+
   if (!protor) {
     throw syntax_error(s, "failed to parse def prototype");
   }
 
-  n->fn->proto = protor.as<ast::prototype>();
+  fn->proto = protor.as<ast::prototype>();
   s = protor;
   s = glob_term(s);
+
 
 
   while (s.first().type != tok_end) {
     rc<ast::node> expr;
 
-    s = glob_term(s);
-    if (s.first().type == tok_then) s++;
     s = glob_term(s);
 
     auto ntok = s.first().type;
@@ -1096,7 +1229,7 @@ static presult parse_def(pstate s, scope *sc) {
       if (!expr_res) throw syntax_error(s, "expected expression");
 
       s = expr_res;
-      n->fn->stmts.push_back(expr_res);
+      fn->stmts.push_back(expr_res);
 
       s = glob_term(s);
 
@@ -1105,9 +1238,13 @@ static presult parse_def(pstate s, scope *sc) {
     // n->expr.push_back(cond);
   }
 
-  n->fn->set_bounds(start_token, s);
-  n->fn->anonymous = false;
   n->set_bounds(start_token, s);
+  fn->anonymous = false;
+  n->set_bounds(start_token, s);
+
+  n->value = fn;
+  n->name = fn->name;
+  n->type = fn->proto->type;
   s++;
   return presult(n, s);
 }
@@ -1173,18 +1310,17 @@ static presult parse_typedef(pstate s, scope *sc) {
 
 static presult parse_let(pstate s, scope *sc) {
   // skip tok_let
+  //
+  auto start = s;
   s++;
 
   auto decl = std::make_shared<ast::var_decl>(sc);
 
   if (s.first().type == tok_global) {
-    decl->global = true;
     s++;
   }
 
-  if (sc->global) decl->global = true;
-
-
+  // if (sc->global) decl->global = true;
 
   if (s.first().type != tok_var) {
     throw syntax_error(s, "unexpected token");
@@ -1226,11 +1362,11 @@ static presult parse_let(pstate s, scope *sc) {
     }
     s = es;
     decl->value = es;
-  } else if (!has_type) {
-    throw syntax_error(
-        s,
-        "`let` syntax requires a type if you don't specify an initial value");
+  } else {
+    throw syntax_error(start, "`let` must have an initial value");
   }
+
+  decl->set_bounds(start, s);
 
 
   sc->bind(decl->name, decl);

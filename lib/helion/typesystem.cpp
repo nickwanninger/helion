@@ -6,17 +6,54 @@
 #include <helion/core.h>
 #include <helion/gc.h>
 #include <helion/iir.h>
+#include <immer/set.hpp>
+
+
 
 using namespace helion;
 using namespace helion::iir;
 
 
+namespace std {
+  template <>
+  struct hash<type> {
+    size_t operator()(type &t) const {
+      size_t x = 0;
+      size_t y = 0;
+      size_t mult = 1000003UL;  // prime multiplier
+
+      x = 0x345678UL;
+      if (t.is_var()) {
+        auto v = t.as_var();
+        x = 0x098172354UL;
+        x ^= std::hash<std::string>()(v->name);
+        return x;
+      } else if (t.is_named()) {
+        auto v = t.as_named();
+        x = 0x856819292UL;
+        x ^= std::hash<std::string>()(v->name);
+        for (auto *p : v->params) {
+          y = operator()(*p);
+          x = (x ^ y) * mult;
+          mult += (size_t)(852520UL + 2);
+        }
+        return x;
+      }
+
+      return x;
+    }
+  };
+
+
+  template <>
+  struct hash<type *> {
+    size_t operator()(type *t) const { return std::hash<type>()(*t); }
+  };
+}  // namespace std
+
+
 named_type *type::as_named(void) {
   return is_named() ? static_cast<named_type *>(this) : nullptr;
-}
-
-method_type *type::as_method(void) {
-  return is_method() ? static_cast<method_type *>(this) : nullptr;
 }
 
 var_type *type::as_var(void) {
@@ -26,30 +63,36 @@ var_type *type::as_var(void) {
 
 std::string named_type::str(void) {
   std::string s;
-  s += m_name;
 
-  if (m_params.size() > 0) {
-    s += "{";
-    for (int i = 0; i < m_params.size(); i++) {
-      s += m_params[i]->str();
-      if (i < m_params.size() - 1) s += ", ";
-    }
-    s += "}";
-  }
-  return s;
-}
-
-
-
-std::string method_type::str(void) {
-  std::string s;
-  s += "(";
-  s += m_types[0]->str();
-  for (int i = 1; i < m_types.size(); i++) {
+  if (name == "->") {
+    s += "(";
+    s += params[0]->str();
     s += " -> ";
-    s += m_types[i]->str();
+    s += params[1]->str();
+    s += ")";
+    return s;
   }
-  s += ")";
+
+  if (name == "()") {
+    s += "(";
+    for (size_t i = 0; i < params.size(); i++) {
+      auto &param = params[i];
+      s += param->str();
+      if (i < params.size() - 1) {
+        s += ", ";
+      }
+    }
+    s += ")";
+    return s;
+  }
+
+
+  s += name;
+
+  for (auto &param : params) {
+    s += " ";
+    s += param->str();
+  }
   return s;
 }
 
@@ -65,35 +108,36 @@ std::string var_type::str(void) {
 static std::atomic<int> next_type_num;
 
 
-static std::string get_next_var_name(void) {
-  std::string name = "v";
+std::string helion::get_next_param_name(void) {
+  std::string name = "t";
   name += std::to_string(next_type_num++);
   return name;
 }
 
 var_type &iir::new_variable_type(void) {
-  return *gc::make_collected<var_type>(get_next_var_name());
+  return *gc::make_collected<var_type>(get_next_param_name());
 }
 
 
 
 type &iir::convert_type(std::shared_ptr<ast::type_node> n) {
 
-  if (n->style == type_style::METHOD) {
-    std::vector<type *> args;
-    for (auto &arg : n->params) {
-      args.push_back(&convert_type(arg));
+  std::string name = n->name;
+
+  std::vector<type *> params;
+  for (auto &p : n->params) params.push_back(&convert_type(p));
+
+
+
+
+  if (!n->parameter) {
+    return *gc::make_collected<named_type>(name, params);
+  } else {
+    if (params.size() > 0) {
+      throw std::logic_error("cannot have parameters on parameter type");
     }
-    auto &t = *gc::make_collected<method_type>(args);
-    return t;
+    return *gc::make_collected<var_type>(name);
   }
-
-  if (n->style == type_style::OBJECT) {
-    std::vector<type *> params;
-    for (auto &p : n->params) params.push_back(&convert_type(p));
-    auto &t = *gc::make_collected<named_type>(n->name, params);
-    return t;
-  }
-
   throw std::logic_error("UNKNOWN TYPE IN `IIR::CONVERT_TYPE`");
 }
+

@@ -5,9 +5,9 @@
 #include <helion/ast.h>
 #include <helion/core.h>
 #include <helion/gc.h>
+#include <helion/iir.h>
 #include <iostream>
 #include <unordered_map>
-#include <helion/iir.h>
 using namespace helion;
 
 
@@ -222,16 +222,39 @@ static ska::flat_hash_map<text, datatype *> datatypes_from_names;
  * executable code and all the state needed for execution
  */
 module *helion::compile_module(std::unique_ptr<ast::module> m) {
-
   auto mod = std::make_unique<module>();
+
   // imod is a module in the intermediate representation
-  iir::module imod("something");
+  iir::module imod("some_module");
 
 
-  imod.create_intrinsic("__intrinsic_add", ast::parse_type("Int -> Int -> Int"))->print(std::cout);
+  /*
+  imod.create_intrinsic("__intrinsic_add", ast::parse_type("Int -> Int -> Int"))
+      ->print(std::cout);
+      */
 
 
+  // create a function that will be the 'init' function of this module
+  auto *fn = gc::make_collected<iir::func>(imod);
+
+
+  iir::builder b(*fn);
+
+  auto bb = fn->new_block();
+  fn->set_type(iir::convert_type(ast::parse_type("Void -> Void")));
+  fn->add_block(bb);
+  b.set_target(bb);
+
+  for (auto &e : m->stmts) {
+    puts(e->str());
+    e->to_iir(b, &imod);
+  }
+
+
+  fn->print(std::cout);
   puts();
+
+  /*
 
   for (auto &def : m->defs) {
     // first, we go through and declare all of the methods
@@ -253,10 +276,10 @@ module *helion::compile_module(std::unique_ptr<ast::module> m) {
       e->to_iir(b, scp);
     }
 
-    // go through the expressions in the function and compile them with the builder
-    fn->print(std::cout);
-    puts();
+    // go through the expressions in the function and compile them with the
+  builder fn->print(std::cout); puts();
   }
+  */
 
   /*
   // setup the scope for this module
@@ -316,9 +339,8 @@ static datatype *declare_type(std::shared_ptr<ast::typedef_node> n,
 
 
 
-// declare a 
+// declare a
 static method *declare_func_def(std::shared_ptr<ast::def>, cg_scope *) {
-
   return nullptr;
 }
 /**

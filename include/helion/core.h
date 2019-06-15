@@ -563,6 +563,11 @@ namespace helion {
   };
 
 
+
+  std::string get_next_param_name(void);
+  void register_param_name_as_used(std::string);
+
+
   module *compile_module(std::unique_ptr<ast::module> m);
 
 

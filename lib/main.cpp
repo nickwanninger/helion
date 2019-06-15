@@ -22,6 +22,8 @@
 #include <helion/core.h>
 #include <helion/iir.h>
 
+#include <immer/set.hpp>
+
 #include <CLI11.hpp>
 
 using namespace helion;
@@ -36,7 +38,7 @@ int main(int argc, char **argv) {
   GC_allow_register_threads();
 
 
-  CLI::App app;
+  CLI::App app("helion");
   std::string driver_path = ":NONE";
   std::string driver_opts = ":NONE";
   app.add_option("-D,--driver", driver_path, "path to the driver dylib");

@@ -13,21 +13,29 @@ using namespace helion::ast;
 
 text ast::module::str(int depth) {
   text s;
-  for (auto d : defs) {
-    s += d->str(0);
-    s += "\n\n";
-  }
 
 
   for (auto d : typedefs) {
     s += d->str(0);
-    s += "\n\n";
+    s += "\n";
   }
 
-  if (entry != nullptr) {
-    s += entry->str(0);
-    s += "\n\n";
+
+  if (globals.size() > 0) {
+    s += "# global variables\n";
+    for (auto d : globals) {
+      s += d->str(0);
+      s += "\n";
+    }
+    s += "\n";
   }
+
+
+  for (auto d : stmts) {
+    s += d->str(0);
+    s += "\n";
+  }
+
 
 
   return s;
@@ -49,13 +57,13 @@ text ast::number::str(int) {
 
 text ast::binary_op::str(int depth) {
   text s;
-  s += "(";
+  // s += "(";
   s += left->str();
   s += " ";
   s += op;
   s += " ";
   s += right->str();
-  s += ")";
+  // s += ")";
   return s;
 }
 
@@ -113,10 +121,7 @@ text ast::var_decl::str(int d) {
 
 text ast::var::str(int) {
   if (global) return global_name;
-  text s;
-
-  s += decl->name;
-  return s;
+  return decl->name;
 }
 
 
@@ -216,52 +221,34 @@ text ast::typeassert::str(int) {
 text ast::type_node::str(int) {
   text s;
 
-  if (style == type_style::OBJECT) {
-    s += name;
-    if (params.size() > 0) {
-      s += "{";
 
-      for (size_t i = 0; i < params.size(); i++) {
-        auto& param = params[i];
-        s += param->str();
-        if (i < params.size() - 1) {
-          s += ", ";
-        }
-      }
-      s += "}";
-    }
-    return s;
-  }
-  if (style == type_style::SLICE) {
-    s += "[";
+  if (name == "->") {
     s += params[0]->str();
-    s += "]";
+    s += " -> ";
+    s += params[1]->str();
     return s;
   }
 
-  if (style == type_style::METHOD) {
-    assert(params.size() > 0);
-
+  if (name == "()") {
     s += "(";
-
     for (size_t i = 0; i < params.size(); i++) {
       auto& param = params[i];
       s += param->str();
       if (i < params.size() - 1) {
-        s += " -> ";
+        s += ", ";
       }
     }
     s += ")";
+    return s;
   }
 
 
+  s += name;
 
-  if (style == type_style::OPTIONAL) {
-    s += params[0]->str();
-    s += "?";
+  for (auto &param : params) {
+    s += " ";
+    s += param->str();
   }
-
-
   return s;
 }
 
@@ -299,7 +286,7 @@ text ast::func::str(int depth) {
   } else {
     s += "()";
   }
-  s += " -> ";
+  s += " => ";
 
   if (stmts.size() > 1) {
     s += "do\n";

@@ -93,9 +93,6 @@ namespace helion {
       NODE_FOOTER;
     };
 
-
-
-
     class binary_op : public node {
      public:
       node_ptr left;
@@ -103,8 +100,6 @@ namespace helion {
       text op;
       NODE_FOOTER;
     };
-
-
 
     class dot : public node {
      public:
@@ -300,12 +295,12 @@ namespace helion {
 
      public:
       module();
+
+      std::vector<std::shared_ptr<var_decl>> globals;
       std::vector<std::shared_ptr<ast::typedef_node>> typedefs;
-      std::vector<std::shared_ptr<ast::def>> defs;
       // stmts are top level expressions that will eventually be ran before main
       std::vector<std::shared_ptr<ast::node>> stmts;
 
-      std::shared_ptr<ast::def> entry;
 
       scope *get_scope(void);
       text str(int = 0);
