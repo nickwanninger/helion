@@ -88,6 +88,7 @@ iir::value *ast::var_decl::to_iir(iir::builder &b, iir::scope *sc) {
   auto *v = value->to_iir(b, sc);
 
   auto *glob = b.create_global(v->get_type());
+  glob->set_name(name);
   sc->bind(name, v);
   b.create_store(glob, v);
   return v;
@@ -95,7 +96,9 @@ iir::value *ast::var_decl::to_iir(iir::builder &b, iir::scope *sc) {
 
 
 iir::value *ast::var::to_iir(iir::builder &b, iir::scope *sc) {
-  return nullptr;
+  std::string name = str();
+  iir::value *v = sc->find_binding(name);
+  return b.create_load(v);
 }
 
 iir::value *ast::prototype::to_iir(iir::builder &b, iir::scope *sc) {
@@ -104,7 +107,28 @@ iir::value *ast::prototype::to_iir(iir::builder &b, iir::scope *sc) {
 
 
 iir::value *ast::func::to_iir(iir::builder &b, iir::scope *sc) {
-  return nullptr;
+  auto *fn = gc::make_collected<iir::func>(*sc->mod);
+
+  iir::builder b2(*fn);
+  auto ns = sc->spawn();
+
+  auto bb = fn->new_block();
+  fn->set_type(iir::convert_type(this->proto->type));
+  fn->add_block(bb);
+  b2.set_target(bb);
+
+  for (auto &arg: proto->args) {
+    std::string name = arg->name;
+    auto &ty = iir::convert_type(arg->type);
+    auto pop = b2.create_poparg(ty);
+    pop->set_name(name);
+    ns->bind(name, pop);
+  }
+
+  for (auto &e : stmts) {
+    e->to_iir(b2, ns);
+  }
+  return fn;
 }
 
 

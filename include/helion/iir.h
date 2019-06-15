@@ -124,12 +124,17 @@ namespace helion {
     class value {
      protected:
       type *ty = nullptr;
+      std::string name;
 
      public:
       type &get_type(void);
       void set_type(type &);
 
       virtual void print(std::ostream &, bool just_name = false, int = 0){};
+
+
+      inline void set_name(std::string name) { this->name = name; }
+      inline std::string get_name(void) { return name; }
     };
 
 
@@ -172,7 +177,8 @@ namespace helion {
       alloc,
       load,
       store,
-      cast
+      cast,
+      poparg,
     };
 
     const char *inst_type_to_str(inst_type);
@@ -291,6 +297,7 @@ namespace helion {
 
       value *create_alloc(type &);
       value *create_global(type &);
+      value *create_poparg(type &);
       void create_store(value *, value *);
       value *create_load(value *);
 

@@ -70,5 +70,10 @@ void builder::create_store(value *dst, value *val) {
 }
 
 value *builder::create_load(value *from) {
-  return create_inst(inst_type::load, from->get_type());
+  return create_inst(inst_type::load, from->get_type(), {from});
+}
+
+
+value *builder::create_poparg(type &t) {
+  return create_inst(inst_type::poparg, t, {});
 }

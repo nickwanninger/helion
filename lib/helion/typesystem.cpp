@@ -65,11 +65,9 @@ std::string named_type::str(void) {
   std::string s;
 
   if (name == "->") {
-    s += "(";
     s += params[0]->str();
     s += " -> ";
     s += params[1]->str();
-    s += ")";
     return s;
   }
 

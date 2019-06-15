@@ -40,8 +40,6 @@ static std::shared_ptr<ast::type_node> make_function_type(
 
   for (int i = a.size() - 2; i > 0; i--) {
     t->params[0] = a[i];
-
-
     auto nt = std::make_shared<ast::type_node>(sc);
     nt->name = "->";
     nt->params = {nullptr, t};

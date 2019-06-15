@@ -47,47 +47,48 @@ value *iir::new_float(double v) {
 
 
 
+std::atomic<int> next_inst_uid = 0;
 
 instruction::instruction(block &_bb, inst_type t, type &dt, slice<value *> as)
     : itype(t), bb(_bb) {
-  uid = bb.fn.next_uid();
+  uid = next_inst_uid++;
   set_type(dt);
   args = as;
 }
 
+
 instruction::instruction(block &_bb, inst_type t, type &dt)
     : itype(t), bb(_bb) {
-  uid = bb.fn.next_uid();
+  uid = next_inst_uid++;
   set_type(dt);
 }
 
 
 void instruction::print(std::ostream &s, bool just_name, int depth) {
   if (just_name) {
-    s << "%";
-    s << std::to_string(uid);
+    if (name != "") {
+      s << name;
+    } else {
+      s << "%";
+      s << std::to_string(uid);
+    }
     return;
   }
 
   std::string indent = "";
   for (int i = 0; i < depth; i++) indent += " ";
 
-  s << indent;
 
   if (!(itype == inst_type::ret || itype == inst_type::br ||
         itype == inst_type::jmp)) {
-    s << "%";
-    s << std::to_string(uid);
-    s << " = ";
+    print(s, true);
+
+    s << ": " << get_type().str() << " = ";
   }
 
-
-  s << inst_type_to_str(itype);
-  s << ".";
-  s << get_type().str();
-  s << "  ";
+  s << inst_type_to_str(itype) << " ";
   for (int i = 0; i < args.size(); i++) {
-    args[i]->print(s, true);
+    args[i]->print(s, true, depth + 3);
     if (i < args.size() - 1) s << ", ";
   }
 }
@@ -106,15 +107,9 @@ void func::add_block(block *b) {
 }
 
 void func::print(std::ostream &s, bool just_name, int depth) {
-  if (just_name) {
-    s << "DOTHIS";
-    return;
-  }
 
   std::string indent = "";
   for (int i = 0; i < depth; i++) indent += " ";
-
-  s << indent;
 
   if (intrinsic) {
     s << "intrinsic ";
@@ -148,13 +143,12 @@ void block::print(std::ostream &s, bool just_name, int depth) {
   std::string indent = "";
   for (int i = 0; i < depth; i++) indent += " ";
 
-  s << indent;
   s << "&bb.";
   s << std::to_string(id);
   s << ":";
   for (int i = 0; i < insts.size(); i++) {
     s << "\n";
-    s << indent;
+    s << indent << indent;
     s << "  ";
     insts[i]->print(s, false, depth + 1);
   }
@@ -192,6 +186,7 @@ const char *iir::inst_type_to_str(inst_type t) {
     handle(load);
     handle(store);
     handle(cast);
+    handle(poparg);
   };
 
 #undef handle

@@ -1,1 +1,13 @@
-let x = 3
+def add(x, y)
+	return x + y
+end
+
+def square(x)
+	return x * x
+end
+
+
+
+let foo = 30
+let bar = 60
+let sum = foo + bar

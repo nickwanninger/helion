@@ -246,7 +246,6 @@ module *helion::compile_module(std::unique_ptr<ast::module> m) {
   b.set_target(bb);
 
   for (auto &e : m->stmts) {
-    puts(e->str());
     e->to_iir(b, &imod);
   }
 
