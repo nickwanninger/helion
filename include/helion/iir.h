@@ -81,6 +81,10 @@ namespace helion {
     var_type &new_variable_type(void);
 
 
+    bool operator==(type &, type &);
+    inline bool operator!=(type &a, type &b) { return !(a == b); }
+
+
 
 
     // defined in typesystem.cpp
@@ -320,4 +324,42 @@ namespace helion {
   }  // namespace iir
 }  // namespace helion
 
+
+
+namespace std {
+  template <>
+  struct hash<helion::iir::type> {
+    size_t operator()(helion::iir::type &t) const {
+      size_t x = 0;
+      size_t y = 0;
+      size_t mult = 1000003UL;  // prime multiplier
+
+      x = 0x345678UL;
+      if (t.is_var()) {
+        auto v = t.as_var();
+        x = 0x098172354UL;
+        x ^= std::hash<std::string>()(v->name);
+        return x;
+      } else if (t.is_named()) {
+        auto v = t.as_named();
+        x = 0x856819292UL;
+        x ^= std::hash<std::string>()(v->name);
+        for (auto *p : v->params) {
+          y = operator()(*p);
+          x = (x ^ y) * mult;
+          mult += (size_t)(852520UL + 2);
+        }
+        return x;
+      }
+
+      return x;
+    }
+  };
+
+
+  template <>
+  struct hash<helion::iir::type *> {
+    size_t operator()(helion::iir::type *t) const { return std::hash<helion::iir::type>()(*t); }
+  };
+}  // namespace std
 #endif

@@ -13,6 +13,8 @@
 #include <immer/detail/hamts/champ_iterator.hpp>
 
 #include <functional>
+#undef IMMER_NODISCARD
+#define IMMER_NODISCARD
 
 namespace immer {
 

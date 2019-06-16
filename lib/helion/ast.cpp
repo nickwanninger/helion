@@ -114,7 +114,7 @@ text ast::var_decl::str(int d) {
 
   if (value != nullptr) {
     s += " = ";
-    s += value->str(d + 1);
+    s += value->str(d);
   }
   return s;
 }
@@ -245,7 +245,7 @@ text ast::type_node::str(int) {
 
   s += name;
 
-  for (auto &param : params) {
+  for (auto& param : params) {
     s += " ";
     s += param->str();
   }
@@ -268,10 +268,11 @@ text ast::prototype::str(int) {
   s += ")";
 
   if (type != nullptr) {
-    if (type->params[0] != nullptr) {
-      s += ": ";
-      s += type->params[0]->str();
-    }
+    int argc = args.size();
+    auto typ = type;
+    for (int i = 0; i < argc; i++) typ = typ->params.back();
+    s += ": ";
+    s += typ->str();
   }
   return s;
 }
@@ -297,7 +298,6 @@ text ast::func::str(int depth) {
       s += e->str(depth + 1);
       s += "\n";
     }
-    s += stmts[0]->str(depth + 1);
     s += indent;
     s += "end";
   } else if (stmts.size() == 1) {

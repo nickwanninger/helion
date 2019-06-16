@@ -10,9 +10,6 @@
 #include <unordered_map>
 using namespace helion;
 
-
-
-
 // the global llvm context
 static llvm::DataLayout data_layout("");
 static std::unique_ptr<cg_scope> global_scope;
@@ -224,6 +221,14 @@ static ska::flat_hash_map<text, datatype *> datatypes_from_names;
 module *helion::compile_module(std::unique_ptr<ast::module> m) {
   auto mod = std::make_unique<module>();
 
+
+
+  ptr_set<iir::type*> s;
+
+  s.insert(&iir::new_variable_type());
+
+
+
   // imod is a module in the intermediate representation
   iir::module imod("some_module");
 
@@ -252,53 +257,6 @@ module *helion::compile_module(std::unique_ptr<ast::module> m) {
 
   fn->print(std::cout);
   puts();
-
-  /*
-
-  for (auto &def : m->defs) {
-    // first, we go through and declare all of the methods
-    auto *fn = imod.create_func(def->fn);
-
-    imod.bind(fn->name, fn);
-
-
-    auto scp = imod.spawn();
-
-
-    iir::builder b(*fn);
-
-    auto bb = fn->new_block();
-    fn->add_block(bb);
-    b.set_target(bb);
-
-    for (auto &e : def->fn->stmts) {
-      e->to_iir(b, scp);
-    }
-
-    // go through the expressions in the function and compile them with the
-  builder fn->print(std::cout); puts();
-  }
-  */
-
-  /*
-  // setup the scope for this module
-  mod->scope = global_scope->spawn();
-  mod->scope->mod = mod.get();
-
-  // the very first thing we have to do is declare the types
-  for (auto t : m->typedefs) declare_type(t, mod->scope);
-
-  // create all the methods
-  for (auto &d : m->defs) mod->add_method(d->fn);
-
-
-  auto Node = mod->scope->find_type("Node");
-  auto NodeInt = Node->specialize({int32_type}, mod->scope);
-  auto NodeNodeInt = Node->specialize({NodeInt}, mod->scope);
-
-  NodeNodeInt->to_llvm();
-
-  */
 
 
   return nullptr;

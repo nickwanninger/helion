@@ -1,13 +1,9 @@
-def add(x, y)
-	return x + y
+let y = 3
+
+def foo(x: a, z: a): a
+	if x then
+		return 0
+	end
+	let sum = x + y * z
+	return sum
 end
-
-def square(x)
-	return x * x
-end
-
-
-
-let foo = 30
-let bar = 60
-let sum = foo + bar

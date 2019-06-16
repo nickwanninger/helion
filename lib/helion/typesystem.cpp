@@ -14,43 +14,11 @@ using namespace helion;
 using namespace helion::iir;
 
 
-namespace std {
-  template <>
-  struct hash<type> {
-    size_t operator()(type &t) const {
-      size_t x = 0;
-      size_t y = 0;
-      size_t mult = 1000003UL;  // prime multiplier
 
-      x = 0x345678UL;
-      if (t.is_var()) {
-        auto v = t.as_var();
-        x = 0x098172354UL;
-        x ^= std::hash<std::string>()(v->name);
-        return x;
-      } else if (t.is_named()) {
-        auto v = t.as_named();
-        x = 0x856819292UL;
-        x ^= std::hash<std::string>()(v->name);
-        for (auto *p : v->params) {
-          y = operator()(*p);
-          x = (x ^ y) * mult;
-          mult += (size_t)(852520UL + 2);
-        }
-        return x;
-      }
-
-      return x;
-    }
-  };
-
-
-  template <>
-  struct hash<type *> {
-    size_t operator()(type *t) const { return std::hash<type>()(*t); }
-  };
-}  // namespace std
-
+bool iir::operator==(type &a, type &b) {
+  auto hf = std::hash<type>();
+  return hf(a) == hf(b);
+}
 
 named_type *type::as_named(void) {
   return is_named() ? static_cast<named_type *>(this) : nullptr;

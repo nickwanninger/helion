@@ -12,8 +12,11 @@
 #include <stdio.h>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include <memory>
+#include <sstream>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
 
 
 namespace helion {
@@ -84,6 +87,35 @@ namespace helion {
     }
     return str;
   }
+
+
+
+  template <typename T>
+  struct ptr_hash {
+    size_t operator()(T t) const {
+      return std::hash<typename std::remove_pointer<T>::type>()(*t);
+    }
+  };
+
+
+  template <typename T>
+  struct ptr_equal {
+    constexpr bool operator()(const T lhs, const T rhs) const {
+      return *lhs == *rhs;
+    }
+  };
+
+  template <typename K, typename V>
+  using ptr_map = std::unordered_map<K, V, ptr_hash<K>, ptr_equal<K>>;
+
+
+  template <typename K>
+    class ptr_set : public std::unordered_set<K, ptr_hash<K>, ptr_equal<K>> {
+      public:
+        inline bool contains(const K& key) {
+          return this->count(key) != 0;
+        }
+    };
 
 }  // namespace helion
 

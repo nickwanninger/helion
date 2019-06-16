@@ -116,7 +116,7 @@ void func::print(std::ostream &s, bool just_name, int depth) {
   } else {
     s << "func ";
   }
-  s << name << " ";
+  s << name << "";
 
   if (blocks.size() == 0) {
     s << "decl ";
@@ -129,7 +129,7 @@ void func::print(std::ostream &s, bool just_name, int depth) {
     s << "  ";
     blocks[i]->print(s, false, depth + 1);
   }
-  s << "\n" << indent << "end";
+  // s << "\n" << indent << "end";
 }
 
 

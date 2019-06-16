@@ -87,10 +87,17 @@ iir::value *ast::type_node::to_iir(iir::builder &b, iir::scope *sc) {
 iir::value *ast::var_decl::to_iir(iir::builder &b, iir::scope *sc) {
   auto *v = value->to_iir(b, sc);
 
-  auto *glob = b.create_global(v->get_type());
-  glob->set_name(name);
-  sc->bind(name, v);
-  b.create_store(glob, v);
+  iir::value *dst;
+
+  // if we are in the global scope, make a global
+  if (sc->mod == sc) {
+    dst = b.create_global(v->get_type());
+  } else {
+    dst = b.create_alloc(v->get_type());
+  }
+  dst->set_name(name);
+  sc->bind(name, dst);
+  b.create_store(dst, v);
   return v;
 }
 
