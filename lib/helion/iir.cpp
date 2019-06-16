@@ -207,7 +207,7 @@ func *iir::module::create_func(std::shared_ptr<ast::func> node) {
   fc->node = node;
   fc->name = node->name;
   fc->intrinsic = false;
-  fc->set_type(convert_type(node->proto->type));
+  fc->set_type(*convert_type(node->proto->type));
   return fc;
 }
 
@@ -217,7 +217,7 @@ func *iir::module::create_intrinsic(std::string name,
   fc->node = nullptr;
   fc->name = name;
   fc->intrinsic = true;
-  fc->set_type(convert_type(tn));
+  fc->set_type(*convert_type(tn));
   bind(name, fc);
   return fc;
 }

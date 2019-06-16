@@ -120,14 +120,14 @@ iir::value *ast::func::to_iir(iir::builder &b, iir::scope *sc) {
   auto ns = sc->spawn();
 
   auto bb = fn->new_block();
-  fn->set_type(iir::convert_type(this->proto->type));
+  fn->set_type(*iir::convert_type(this->proto->type));
   fn->add_block(bb);
   b2.set_target(bb);
 
   for (auto &arg: proto->args) {
     std::string name = arg->name;
-    auto &ty = iir::convert_type(arg->type);
-    auto pop = b2.create_poparg(ty);
+    auto ty = iir::convert_type(arg->type);
+    auto pop = b2.create_poparg(*ty);
     pop->set_name(name);
     ns->bind(name, pop);
   }

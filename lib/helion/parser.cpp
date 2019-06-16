@@ -797,6 +797,7 @@ std::shared_ptr<ast::type_node> ast::parse_type(text src) {
   pstate state(t, 0);
   scope s;
   auto res = ::parse_type(state, &s);
+  if (!res) throw syntax_error(state, "failed to parse");
   auto tn = res.as<ast::type_node>();
   return tn;
 }

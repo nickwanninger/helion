@@ -49,34 +49,35 @@ namespace helion {
       inline bool is_named(void) { return t == type_type::named; };
       inline bool is_var(void) { return t == type_type::var; };
 
+
+      inline type(type_type t) : t(t){};
       named_type *as_named(void);
       var_type *as_var(void);
       inline virtual std::string str(void) = 0;
     };
 
     class named_type : public type {
-      type_type t = type_type::named;
-
      public:
       std::string name;
       std::vector<type *> params;
 
-      inline named_type(std::string name) : name(name) {}
+      inline named_type(std::string name)
+          : type(type_type::named), name(name) {}
       inline named_type(std::string name, std::vector<type *> params)
-          : name(name), params(params) {}
+          : type(type_type::named), name(name), params(params) {}
       std::string str(void);
     };
 
 
     class var_type : public type {
-      type_type t = type_type::var;
-
      public:
       std::string name;
-      type &points_to = *this;
-      inline var_type(std::string name) : name(name) {}
+      type *points_to = this;
+      inline var_type(std::string name) : type(type_type::var), name(name) {}
       std::string str(void);
     };
+
+
 
     var_type &new_variable_type(void);
 
@@ -88,7 +89,8 @@ namespace helion {
 
 
     // defined in typesystem.cpp
-    type &convert_type(std::shared_ptr<ast::type_node>);
+    type *convert_type(std::shared_ptr<ast::type_node>);
+    type *convert_type(std::string);
 
 
 
@@ -333,7 +335,6 @@ namespace std {
       size_t x = 0;
       size_t y = 0;
       size_t mult = 1000003UL;  // prime multiplier
-
       x = 0x345678UL;
       if (t.is_var()) {
         auto v = t.as_var();
@@ -359,7 +360,9 @@ namespace std {
 
   template <>
   struct hash<helion::iir::type *> {
-    size_t operator()(helion::iir::type *t) const { return std::hash<helion::iir::type>()(*t); }
+    size_t operator()(helion::iir::type *t) const {
+      return std::hash<helion::iir::type>()(*t);
+    }
   };
 }  // namespace std
 #endif

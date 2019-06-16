@@ -8,6 +8,9 @@
 #include <helion/iir.h>
 #include <iostream>
 #include <unordered_map>
+#include <helion/infer.h>
+
+
 using namespace helion;
 
 // the global llvm context
@@ -223,9 +226,37 @@ module *helion::compile_module(std::unique_ptr<ast::module> m) {
 
 
 
-  ptr_set<iir::type*> s;
+  ptr_set<iir::type *> types;
 
-  s.insert(&iir::new_variable_type());
+  while (!std::cin.eof()) {
+
+
+    puts("Enter two types:");
+    std::cout << "  t1> ";
+    std::string src1;
+    std::getline(std::cin, src1);
+
+
+    std::cout << "  t2> ";
+    std::string src2;
+    std::getline(std::cin, src2);
+
+    try {
+      puts();
+      auto t1 = iir::convert_type(src1);
+      auto t2 = iir::convert_type(src2);
+
+      infer::unify(t1, t2);
+      puts("unification result:");
+      puts("  t1 =", t1->str());
+      puts("  t2 =", t2->str());
+      puts("-------------------");
+    } catch (std::exception &e) {
+      puts(e.what());
+    }
+  }
+
+  die();
 
 
 
@@ -246,7 +277,7 @@ module *helion::compile_module(std::unique_ptr<ast::module> m) {
   iir::builder b(*fn);
 
   auto bb = fn->new_block();
-  fn->set_type(iir::convert_type(ast::parse_type("Void -> Void")));
+  // fn->set_type(iir::convert_type(ast::parse_type("Void -> Void")));
   fn->add_block(bb);
   b.set_target(bb);
 

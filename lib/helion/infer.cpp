@@ -15,9 +15,9 @@ using namespace helion;
 iir::type *infer::find(iir::type *t) {
   if (t->is_var()) {
     auto tv = t->as_var();
-    if (&tv->points_to != tv) {
-      tv->points_to = *find(&tv->points_to);
-      return &tv->points_to;
+    if (tv->points_to != tv) {
+      tv->points_to = find(tv->points_to);
+      return tv->points_to;
     }
   }
   return t;
@@ -26,8 +26,6 @@ iir::type *infer::find(iir::type *t) {
 
 static bool is_arrow(iir::type *t) {
   if (!t->is_named()) return false;
-
-
   auto n = t->as_named();
   return n->name == "->";
 }
@@ -52,16 +50,51 @@ void infer::do_union(iir::var_type *ta, iir::type *tb) {
   if (occurs(ta, tb)) {
     throw std::logic_error("no rec type please");
   }
-  ta->points_to = *tb;
+  ta->points_to = tb;
 }
 
 
 void infer::unify(iir::type *ta, iir::type *tb) {
+
+  // drop the types to their lowest forms
   auto t1 = find(ta);
   auto t2 = find(tb);
 
   if (is_arrow(t1) && is_arrow(t2)) {
+    auto f1 = t1->as_named();
+    auto f2 = t2->as_named();
+
+    auto a1 = f1->params[0];
+    auto b1 = f1->params[1];
+
+    auto a2 = f2->params[0];
+    auto b2 = f2->params[1];
+
+
+    unify(a1, a2);
+    unify(b1, b2);
+
     // unify all the types in the methods
+    return;
+  }
+
+
+  // unify two named types of the same name
+  if (t1->is_named() && t2->is_named()) {
+    auto n1 = t1->as_named();
+    auto n2 = t2->as_named();
+    if (n1->name != n2->name || n1->params.size() != n2->params.size()) {
+      std::string err;
+      err += "unify error, type mismatch: ";
+      err += t1->str();
+      err += " and ";
+      err += t2->str();
+      throw std::logic_error(err);
+    }
+
+    for (int i = 0; i < n1->params.size(); i++) {
+      unify(n1->params[i], n2->params[i]);
+    }
     return;
   }
 
@@ -74,6 +107,7 @@ void infer::unify(iir::type *ta, iir::type *tb) {
   if (t2->is_var()) {
     auto tv = t2->as_var();
     do_union(tv, ta);
+    return;
   }
 
   if (*t1 != *t2) throw std::logic_error("unify error, type mismatch");

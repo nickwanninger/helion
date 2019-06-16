@@ -1,9 +1,5 @@
 let y = 3
 
 def foo(x: a, z: a): a
-	if x then
-		return 0
-	end
-	let sum = x + y * z
-	return sum
+	return x + z
 end

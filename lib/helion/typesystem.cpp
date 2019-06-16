@@ -64,8 +64,8 @@ std::string named_type::str(void) {
 
 
 std::string var_type::str(void) {
-  if (&points_to != this) {
-    return points_to.str();
+  if (points_to != nullptr && points_to != this) {
+    return points_to->str();
   }
   return name;
 }
@@ -86,24 +86,28 @@ var_type &iir::new_variable_type(void) {
 
 
 
-type &iir::convert_type(std::shared_ptr<ast::type_node> n) {
+type *iir::convert_type(std::shared_ptr<ast::type_node> n) {
 
   std::string name = n->name;
 
   std::vector<type *> params;
-  for (auto &p : n->params) params.push_back(&convert_type(p));
+  for (auto &p : n->params) params.push_back(convert_type(p));
 
 
 
 
   if (!n->parameter) {
-    return *gc::make_collected<named_type>(name, params);
+    return gc::make_collected<named_type>(name, params);
   } else {
     if (params.size() > 0) {
       throw std::logic_error("cannot have parameters on parameter type");
     }
-    return *gc::make_collected<var_type>(name);
+    return gc::make_collected<var_type>(name);
   }
   throw std::logic_error("UNKNOWN TYPE IN `IIR::CONVERT_TYPE`");
 }
 
+
+type *iir::convert_type(std::string s) {
+  return convert_type(ast::parse_type(s));
+}
