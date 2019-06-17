@@ -73,7 +73,7 @@ int main(int argc, char **argv) {
 
   try {
     auto res = parse_module(src, entry_point);
-    // puts(res->str());
+    puts(res->str());
     compile_module(std::move(res));
   } catch (syntax_error &e) {
     puts(e.what());

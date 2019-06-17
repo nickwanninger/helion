@@ -1,10 +1,8 @@
-def add(x: a, y: a): a
-	# blah blah blah
-	return x
-end
 
+let test = (x: a, y: a): a => 1
 
-# simple WIP function
-def double(n: a): b
-	return add(n, n)
-end
+let use_test = (n) => {
+	return test(n, n)
+}
+
+let map = (fn: a -> b, xs: [a]): [b] => 0

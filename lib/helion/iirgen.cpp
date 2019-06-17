@@ -113,27 +113,12 @@ iir::value *ast::nil::to_iir(iir::builder &b, iir::scope *sc) {
 }
 
 iir::value *ast::do_block::to_iir(iir::builder &b, iir::scope *sc) {
-  auto join = b.new_block();
-
-  auto nb = b.new_block();
-  b.create_jmp(nb);
-
   auto ns = sc->spawn();
-
-  b.insert_block(nb);
-
 
   iir::value *last_expr = nullptr;
   for (auto &s : exprs) {
     last_expr = s->to_iir(b, ns);
   }
-
-
-
-  b.create_jmp(join);
-  b.insert_block(join);
-
-  b.set_target(join);
   return last_expr;
 }
 
@@ -200,9 +185,8 @@ iir::value *ast::func::to_iir(iir::builder &b, iir::scope *sc) {
     pop->set_name(name);
     ns->bind(name, pop);
   }
-  for (auto &e : stmts) {
-    e->to_iir(b2, ns);
-  }
+
+  stmt->to_iir(b2, ns);
   return fn;
 }
 

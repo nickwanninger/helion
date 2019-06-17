@@ -189,7 +189,7 @@ text ast::nil::str(int) {
 
 text ast::do_block::str(int depth) {
   text indent = "";
-  for (int i = 0; i < depth; i++) indent += "  ";
+  for (int i = 0; i < depth; i++) indent += ".  ";
 
   text s;
 
@@ -223,7 +223,11 @@ text ast::type_node::str(int) {
 
 
   if (name == "->") {
-    s += params[0]->str();
+    if (params[0]->params.size() == 1) {
+      s += params[0]->params[0]->str();
+    } else {
+      s += params[0]->str();
+    }
     s += " -> ";
     s += params[1]->str();
     return s;
@@ -257,7 +261,6 @@ text ast::prototype::str(int) {
   text s;
 
   s += "(";
-
   for (size_t i = 0; i < args.size(); i++) {
     auto& arg = args[i];
     s += arg->str();
@@ -268,9 +271,7 @@ text ast::prototype::str(int) {
   s += ")";
 
   if (type != nullptr) {
-    int argc = args.size();
-    auto typ = type;
-    for (int i = 0; i < argc; i++) typ = typ->params.back();
+    auto typ = type->params.back();
     s += ": ";
     s += typ->str();
   }
@@ -282,6 +283,18 @@ text ast::func::str(int depth) {
   for (int i = 0; i < depth; i++) indent += "  ";
 
   text s;
+
+  s += "[";
+
+  int i = 0;
+  for (auto& c : captures) {
+    i++;
+    s += c;
+    if (i < captures.size() - 1) s += ", ";
+  }
+
+  s += "]";
+
   if (proto != nullptr) {
     s += proto->str();
   } else {
@@ -289,20 +302,7 @@ text ast::func::str(int depth) {
   }
   s += " => ";
 
-  if (stmts.size() > 1) {
-    s += "do\n";
-
-    for (auto& e : stmts) {
-      s += indent;
-      s += "  ";
-      s += e->str(depth + 1);
-      s += "\n";
-    }
-    s += indent;
-    s += "end";
-  } else if (stmts.size() == 1) {
-    s += stmts[0]->str(depth + 1);
-  }
+  s += stmt->str(depth);
   return s;
 }
 
@@ -319,7 +319,7 @@ text ast::def::str(int depth) {
 
   if (fn->proto != nullptr) s += fn->proto->str();
   s += "\n";
-  for (auto& e : fn->stmts) {
+  for (auto& e : fn->stmt->as<ast::do_block*>()->exprs) {
     s += indent;
     s += "  ";
     s += e->str(depth + 1);

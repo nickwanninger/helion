@@ -234,9 +234,9 @@ namespace helion {
     class func : public node {
      public:
       // a vector of the variables which this function captures
-      std::vector<std::shared_ptr<ast::var_decl>> captures;
+      std::unordered_set<std::string> captures;
       std::shared_ptr<prototype> proto = nullptr;
-      std::vector<std::shared_ptr<ast::node>> stmts;
+      std::shared_ptr<ast::node> stmt;
       std::vector<std::shared_ptr<ast::return_node>> returns;
       std::string name = "";
       bool anonymous = false;

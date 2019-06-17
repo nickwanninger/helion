@@ -31,6 +31,18 @@ scope *ast::module::get_scope(void) { return m_scope.get(); }
 
 static std::shared_ptr<ast::type_node> make_function_type(
     std::vector<std::shared_ptr<ast::type_node>> &a, scope *sc) {
+  if (a.size() == 1) {
+    auto t = std::make_shared<ast::type_node>(sc);
+    t->name = "->";
+
+
+    auto void_node = std::make_shared<ast::type_node>(sc);
+    void_node->name = "Void";
+    t->params = {void_node, a.back()};
+    return t;
+  }
+
+
   assert(a.size() >= 2);
 
   auto t = std::make_shared<ast::type_node>(sc);
@@ -394,6 +406,11 @@ static presult parse_var(pstate s, scope *sc) {
     v->global = true;
     v->global_name = name;
   } else {
+    if (found->scp->fn != sc->fn) {
+      if (found->scp->fn != nullptr) {
+        sc->fn->captures.insert(name);
+      }
+    }
     v->decl = found;
   }
 
@@ -747,11 +764,30 @@ static presult parse_type(pstate s, scope *sc, bool absorb_params) {
     s++;
 
 
-    if (params.size() == 0)
-      throw syntax_error(s, "empty parens in type invalid");
+    if (s.first().type == tok_arrow) {
+      auto args = std::make_shared<ast::type_node>(sc);
+      args->name = name;
+      args->style = type_style::OBJECT;
+      args->params = params;
 
-    if (params.size() == 1) {
-      return presult(params[0], s);
+      params.clear();
+
+      name = "->";
+      params.push_back(args);
+      s++;
+      auto ret = parse_type(s, sc);
+      if (!ret) {
+        throw syntax_error(s, "empty parens in type invalid");
+      }
+      s = ret;
+      params.push_back(ret.as<ast::type_node>());
+    } else {
+      if (params.size() == 0)
+        throw syntax_error(s, "empty parens in type invalid");
+
+      if (params.size() == 1) {
+        return presult(params[0], s);
+      }
     }
 
   } else if (s.first().type == tok_var) {
@@ -797,7 +833,15 @@ static presult parse_type(pstate s, scope *sc, bool absorb_params) {
     auto fn = std::make_shared<ast::type_node>(sc);
     fn->name = "->";
     fn->style = type_style::OBJECT;
-    fn->params = {type, ret.as<ast::type_node>()};
+
+
+    auto args = std::make_shared<ast::type_node>(sc);
+    args->name = "()";
+    args->style = type_style::OBJECT;
+    args->params = {type};
+
+
+    fn->params = {args, ret.as<ast::type_node>()};
     return presult(fn, s);
   }
 
@@ -917,8 +961,22 @@ static presult parse_prototype(pstate s, scope *sc) {
   for (auto a : proto->args) {
     sc->bind(a->name, a);
   }
-  argument_types.push_back(return_type);
-  proto->type = make_function_type(argument_types, sc);
+  // argument_types.push_back(return_type);
+
+
+
+  auto args = std::make_shared<ast::type_node>(sc);
+  args->name = "()";
+  args->style = type_style::OBJECT;
+  args->params = argument_types;
+
+
+  auto fn = std::make_shared<ast::type_node>(sc);
+  fn->name = "->";
+  fn->style = type_style::OBJECT;
+  fn->params = {args, return_type};
+  proto->type = fn;
+  // proto->type = make_function_type(argument_types, sc);
   return presult(proto, s);
 }
 
@@ -969,7 +1027,7 @@ static presult parse_function_literal(pstate s, scope *sc) {
 
   // fill in the function fields.
   fn->proto = proto;
-  fn->stmts.push_back(expr);
+  fn->stmt = expr;
   fn->anonymous = true;
 
   return presult(fn, s);
@@ -1081,6 +1139,8 @@ static presult parse_def(pstate s, scope *sc) {
 
 
 
+
+  auto block = std::make_shared<ast::do_block>(sc);
   while (s.first().type != tok_end) {
     rc<ast::node> expr;
 
@@ -1093,7 +1153,7 @@ static presult parse_def(pstate s, scope *sc) {
       if (!expr_res) throw syntax_error(s, "expected expression");
 
       s = expr_res;
-      fn->stmts.push_back(expr_res);
+      block->exprs.push_back(expr_res);
 
       s = glob_term(s);
 
@@ -1105,7 +1165,7 @@ static presult parse_def(pstate s, scope *sc) {
   n->set_bounds(start_token, s);
   fn->anonymous = false;
   n->set_bounds(start_token, s);
-
+  fn->stmt = block;
   n->value = fn;
   n->name = fn->name;
   n->type = fn->proto->type;
