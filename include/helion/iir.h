@@ -112,15 +112,16 @@ namespace helion {
         p->mod = mod;
         return p;
       }
+
+
       inline value *find_binding(std::string &name) {
-        auto *sc = this;
-        while (sc != nullptr) {
-          if (sc->m_bindings.count(name) != 0) {
-            return sc->m_bindings[name];
-          }
-          sc = sc->m_parent;
+        if (m_bindings.count(name) != 0) {
+          return m_bindings[name];
         }
-        return nullptr;
+
+        if (m_parent == nullptr) return nullptr;
+
+        return m_parent->find_binding(name);
       }
       inline void bind(std::string name, value *v) { m_bindings[name] = v; }
     };
@@ -221,6 +222,7 @@ namespace helion {
      protected:
       friend builder;
       slice<instruction *> insts;
+      instruction *terminator = nullptr;
       friend instruction;
       friend func;
       int id = 0;
@@ -230,6 +232,13 @@ namespace helion {
       block(func &);
       inline int get_id(void) { return id; }
       void add_inst(instruction *);
+
+      inline instruction *get_terminator(void) { return terminator; }
+      inline bool terminated(void) {
+        // a block is terminated iff the terminator is not null
+        return terminator != nullptr;
+      }
+
       void print(std::ostream &, bool = false, int = 0);
     };
 
@@ -306,6 +315,7 @@ namespace helion {
       value *create_poparg(type &);
       void create_store(value *, value *);
       value *create_load(value *);
+      value *create_call(value *, std::vector<value *>);
 
 
       void create_ret(value *);
@@ -318,6 +328,11 @@ namespace helion {
 
       inline void insert_block(block *b) { current_func.add_block(b); }
       inline block *new_block(void) { return current_func.new_block(); }
+      inline block *new_block(std::string name) {
+        auto b = current_func.new_block();
+        b->set_name(name);
+        return b;
+      }
     };
 
 

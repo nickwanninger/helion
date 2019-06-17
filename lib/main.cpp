@@ -56,7 +56,6 @@ int main(int argc, char **argv) {
 
   helion::init();
 
-
   const char *ep_ptr = entry_point.c_str();
   // check that the file exists before trying to read it
   struct stat sinfo;
@@ -67,12 +66,14 @@ int main(int argc, char **argv) {
   }
 
 
+
+
   // print every token from the file
   text src = read_file(ep_ptr);
 
   try {
     auto res = parse_module(src, entry_point);
-    puts(res->str());
+    // puts(res->str());
     compile_module(std::move(res));
   } catch (syntax_error &e) {
     puts(e.what());

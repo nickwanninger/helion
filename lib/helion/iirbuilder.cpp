@@ -12,7 +12,12 @@ using namespace helion::iir;
 
 iir::builder::builder(func &f) : current_func(f) {}
 
-void iir::builder::set_target(block *b) { target = b; }
+void iir::builder::set_target(block *b) {
+  if (target != nullptr)
+    if (!target->terminated())
+      throw std::logic_error("switching away from unterminated iir block");
+  target = b;
+}
 
 
 value *iir::builder::create_alloc(type &d) {
@@ -20,8 +25,10 @@ value *iir::builder::create_alloc(type &d) {
 }
 
 void iir::builder::create_ret(value *v) {
-  // and create the inst
-  create_inst(inst_type::ret, v->get_type(), {v});
+  if (target->terminated()) return;
+  slice<value *> as = {v};
+  target->terminator = gc::make_collected<instruction>(*target, inst_type::ret,
+                                                       new_variable_type(), as);
 }
 
 
@@ -51,11 +58,17 @@ value *builder::create_binary(inst_type t, value *l, value *r) {
 
 
 void builder::create_branch(value *cond, block *if_true, block *if_false) {
-  create_inst(inst_type::br, new_variable_type(), {cond, if_true, if_false});
+  if (target->terminated()) return;
+  slice<value *> as = {if_true, if_false};
+  target->terminator = gc::make_collected<instruction>(*target, inst_type::br,
+                                                       new_variable_type(), as);
 }
 
 void builder::create_jmp(block *b) {
-  create_inst(inst_type::jmp, new_variable_type(), {b});
+  if (target->terminated()) return;
+  slice<value *> as = {b};
+  target->terminator = gc::make_collected<instruction>(*target, inst_type::jmp,
+                                                       new_variable_type(), as);
 }
 
 
@@ -76,4 +89,12 @@ value *builder::create_load(value *from) {
 
 value *builder::create_poparg(type &t) {
   return create_inst(inst_type::poparg, t, {});
+}
+
+
+value *builder::create_call(value *callee, std::vector<value *> args) {
+  auto as = std::vector<value *>();
+  as.push_back(callee);
+  for (auto &a : args) as.push_back(a);
+  return create_inst(inst_type::call, new_variable_type(), as);
 }

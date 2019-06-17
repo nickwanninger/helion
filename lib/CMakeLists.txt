@@ -34,23 +34,21 @@ add_library(helion-obj OBJECT
 target_include_directories(helion-obj PRIVATE ${LLVM_INCLUDE_DIRS})
 
 
-add_library(helion-lib SHARED $<TARGET_OBJECTS:helion-obj>)
-add_library(helion-a   STATIC $<TARGET_OBJECTS:helion-obj>)
-
-
-set_target_properties(helion-lib PROPERTIES OUTPUT_NAME helion)
-target_link_libraries(helion-lib ${LLVM_LIBS} ${CMAKE_DL_LIBS} -lgc -lgccpp -pthread -lboost_system)
-
-
-
-
-set_target_properties(helion-a PROPERTIES OUTPUT_NAME helion)
-target_link_libraries(helion-a ${LLVM_LIBS} ${CMAKE_DL_LIBS} -lgc -lgccpp -pthread -lboost_system)
+# add_library(helion-lib SHARED $<TARGET_OBJECTS:helion-obj>)
+# add_library(helion-a   STATIC $<TARGET_OBJECTS:helion-obj>)
+# set_target_properties(helion-lib PROPERTIES OUTPUT_NAME helion)
+# target_link_libraries(helion-lib ${LLVM_LIBS} ${CMAKE_DL_LIBS} -lgc -pthread -lboost_system)
+# set_target_properties(helion-a PROPERTIES OUTPUT_NAME helion)
+# target_link_libraries(helion-a ${LLVM_LIBS} ${CMAKE_DL_LIBS} -lgc -pthread -lboost_system)
 
 add_executable(helion
 	lib/main.cpp
+	$<TARGET_OBJECTS:helion-obj>
 )
 
+
 target_include_directories(helion PRIVATE ${LLVM_INCLUDE_DIRS})
-target_link_libraries(helion helion-lib)
+target_link_libraries(helion ${LLVM_LIBS} ${CMAKE_DL_LIBS} -lgc -pthread -lboost_system)
+
+# target_link_libraries(helion helion-obj)
 

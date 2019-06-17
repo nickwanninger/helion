@@ -67,10 +67,9 @@ instruction::instruction(block &_bb, inst_type t, type &dt)
 void instruction::print(std::ostream &s, bool just_name, int depth) {
   if (just_name) {
     if (name != "") {
-      s << name;
+      s << "%" << name;
     } else {
-      s << "%";
-      s << std::to_string(uid);
+      s << "%" << std::to_string(uid);
     }
     return;
   }
@@ -107,7 +106,6 @@ void func::add_block(block *b) {
 }
 
 void func::print(std::ostream &s, bool just_name, int depth) {
-
   std::string indent = "";
   for (int i = 0; i < depth; i++) indent += " ";
 
@@ -135,22 +133,33 @@ void func::print(std::ostream &s, bool just_name, int depth) {
 
 void block::print(std::ostream &s, bool just_name, int depth) {
   if (just_name) {
-    s << "&bb.";
-    s << std::to_string(id);
+    if (name != "") {
+      s << "&";
+      s << name;
+    } else {
+      s << "&bb";
+    }
+    s << "." << std::to_string(id);
     return;
   }
 
   std::string indent = "";
   for (int i = 0; i < depth; i++) indent += " ";
 
-  s << "&bb.";
-  s << std::to_string(id);
+  print(s, true);
   s << ":";
   for (int i = 0; i < insts.size(); i++) {
     s << "\n";
     s << indent << indent;
     s << "  ";
     insts[i]->print(s, false, depth + 1);
+  }
+
+  if (terminated()) {
+    s << "\n";
+    s << indent << indent;
+    s << "  ";
+    terminator->print(s, false, depth + 1);
   }
   s << "\n";
 }
@@ -200,7 +209,7 @@ const char *iir::inst_type_to_str(inst_type t) {
 /*
  * module constructor
  */
-iir::module::module(std::string name) : name(name) {}
+iir::module::module(std::string name) : scope(), name(name) {}
 
 func *iir::module::create_func(std::shared_ptr<ast::func> node) {
   func *fc = gc::make_collected<func>(*this);

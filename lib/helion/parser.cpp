@@ -29,7 +29,6 @@ scope *ast::module::get_scope(void) { return m_scope.get(); }
 
 
 
-
 static std::shared_ptr<ast::type_node> make_function_type(
     std::vector<std::shared_ptr<ast::type_node>> &a, scope *sc) {
   assert(a.size() >= 2);
@@ -127,20 +126,15 @@ std::unique_ptr<ast::module> helion::parse_module(pstate s) {
              // First, we need to peel the value out of the decl, and put it in
              // an explicit assignment later on. this is so you can logically
              // use a variable before it is actually defined in the top level
-
              auto val = tn->value;
              tn->value = nullptr;
-
              mod->globals.push_back(tn);
-
              auto var = std::make_shared<ast::var>(tn->scp);
              var->decl = tn;
              auto assignment = std::make_shared<ast::binary_op>(tn->scp);
              assignment->left = var;
              assignment->right = val;
              assignment->op = "=";
-
-
              mod->stmts.push_back(assignment);
            } else {
            */
@@ -207,17 +201,24 @@ static presult parse_expr(pstate s, scope *sc, bool do_binary) {
     if (res) goto parse_success; \
   }
 
-  if (!res && begin.type == tok_num) TRY(parse_num(s, sc));
+#define TRY_NO_EXPAND(expr)   \
+  {                      \
+    res = expr;          \
+    if (res) return res; \
+  }
+
+  if (!res && begin.type == tok_num) TRY_NO_EXPAND(parse_num(s, sc));
   // try to parse a function literal
-  if (!res && begin.type == tok_left_paren) TRY(parse_function_literal(s, sc));
+  if (!res && begin.type == tok_left_paren) TRY_NO_EXPAND(parse_function_literal(s, sc));
   if (!res && begin.type == tok_left_paren) TRY(parse_paren(s, sc));
   if (!res && begin.type == tok_var) TRY(parse_var(s, sc));
-  if (!res && begin.type == tok_str) TRY(parse_str(s, sc));
-  if (!res && begin.type == tok_keyword) TRY(parse_keyword(s, sc));
+  // if (!res && begin.type == tok_str) TRY(parse_str(s, sc));
+  // if (!res && begin.type == tok_keyword) TRY(parse_keyword(s, sc));
   if (!res && begin.type == tok_do) TRY(parse_do(s, sc));
-  if (!res && begin.type == tok_return) TRY(parse_return(s, sc));
-  if (!res && begin.type == tok_nil) TRY(parse_nil(s, sc));
-  if (!res && begin.type == tok_if) TRY(parse_if(s, sc));
+  if (!res && begin.type == tok_left_curly) TRY(parse_do(s, sc));
+  if (!res && begin.type == tok_return) TRY_NO_EXPAND(parse_return(s, sc));
+  // if (!res && begin.type == tok_nil) TRY(parse_nil(s, sc));
+  if (!res && begin.type == tok_if) TRY_NO_EXPAND(parse_if(s, sc));
   if (!res && begin.type == tok_def) TRY(parse_def(s, sc));
   if (!res && begin.type == tok_typedef) TRY(parse_typedef(s, sc));
   if (!res && begin.type == tok_let) TRY(parse_let(s, sc));
@@ -354,9 +355,7 @@ static presult expand_expression(presult r, scope *sc) {
   s = first;
 
   while (true) {
-    if (s.first().type != tok_comma) {
-      break;
-    }
+    if (s.first().type != tok_comma) break;
     // skip that comma
     s++;
     auto er = parse_expr(s, sc);
@@ -367,7 +366,6 @@ static presult expand_expression(presult r, scope *sc) {
       throw syntax_error(s, "failed to parse function call");
     }
   }
-
   auto call = std::make_shared<ast::call>(sc);
   call->func = expr;
   call->args = args;
@@ -656,6 +654,11 @@ static presult parse_do(pstate s, scope *sc) {
   // get a new scope for the do block
   sc = sc->spawn();
 
+
+  auto end = tok_end;
+
+  if (s.first().type == tok_left_curly) end = tok_right_curly;
+
   // skip over the tok_do...
   s++;
   auto block = std::make_shared<ast::do_block>(sc);
@@ -663,7 +666,7 @@ static presult parse_do(pstate s, scope *sc) {
   while (true) {
     s = glob_term(s);
 
-    if (s.first().type == tok_end) {
+    if (s.first().type == end) {
       break;
     }
     auto res = parse_expr(s, sc);
@@ -988,49 +991,45 @@ static presult parse_if(pstate s, scope *sc) {
   // mutually exclusive blocks in an if, elif, else chain
   // though the `else` block is handled differently, and has
   // no cond
-  std::vector<ast::if_node::condition> conds;
   auto n = std::make_shared<ast::if_node>(sc);
   auto start_token = s.first();
 
-  while (s.first().type != tok_end) {
-    // new scope for this condition
-    auto ns = sc->spawn();
 
-    ast::if_node::condition cond;
-    if (s.first().type == tok_if || s.first().type == tok_elif) {
-      s++;
-      auto condr = parse_expr(s, ns);
-      if (!condr) throw syntax_error(s, "invalid condition in if block");
-      s = condr;
-      cond.cond = condr.as<ast::node>();
-    } else if (s.first().type == tok_else) {
-      n->has_default = true;
-      s++;
-    }
-
-    s = glob_term(s);
-    if (s.first().type == tok_then) s++;
-    s = glob_term(s);
-
-    auto ntok = s.first().type;
-    while (ntok != tok_elif && ntok != tok_else && ntok != tok_end) {
-      auto expr_res = parse_expr(s, ns);
-
-      if (!expr_res) throw syntax_error(s, "expected expression");
-
-      s = expr_res;
-      cond.body.push_back(expr_res);
-
-      s = glob_term(s);
-
-      ntok = s.first().type;
-    }
-    n->conds.push_back(cond);
-  }
-
-  n->set_bounds(start_token, s.first());
+  // skip the 'if'
   s++;
 
+  auto cond = parse_expr(s, sc);
+
+  if (!cond) throw syntax_error(s, "failed to parse if condition");
+
+  s = cond;
+  n->cond = cond;
+
+  if (s.first().type == tok_then) s++;
+
+  s = glob_term(s);
+
+  auto true_scope = sc->spawn();
+  auto true_expr = parse_expr(s, true_scope);
+  if (!true_expr) throw syntax_error(s, "failed to parse if true value");
+
+  s = true_expr;
+  n->true_expr = true_expr;
+  s = glob_term(s);
+
+  if (glob_term(s).first().type == tok_else)
+    if (s.first().type == tok_else) {
+      s = glob_term(s);
+      s++;
+      s = glob_term(s);
+      auto false_scope = sc->spawn();
+      auto false_expr = parse_expr(s, false_scope);
+      if (!false_expr) throw syntax_error(s, "failed to parse if false value");
+      s = false_expr;
+      n->false_expr = false_expr;
+    }
+
+  n->set_bounds(start_token, s.first());
 
   return presult(n, s);
 }

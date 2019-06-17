@@ -1,5 +1,10 @@
-let y = 3
+def add(x: a, y: a): a
+	# blah blah blah
+	return x
+end
 
-def foo(x: a, z: a): a
-	return x + z
+
+# simple WIP function
+def double(n: a): b
+	return add(n, n)
 end

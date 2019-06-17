@@ -36,9 +36,9 @@ namespace helion {
   namespace ast {
 
 
-#define NODE_FOOTER                               \
- public:                                          \
-  using node::node;                               \
+#define NODE_FOOTER                                 \
+ public:                                            \
+  using node::node;                                 \
   iir::value *to_iir(iir::builder &, iir::scope *); \
   text str(int depth = 0);
 
@@ -66,6 +66,13 @@ namespace helion {
       inline std::string syntax_error(std::string &msg) {
         std::string error;
         return error;
+      }
+
+
+
+      template <typename T>
+      inline T as(void) {
+        return dynamic_cast<T>(this);
       }
 
       virtual text str(int depth = 0) { return ""; };
@@ -245,14 +252,9 @@ namespace helion {
 
     class if_node : public node {
      public:
-      struct condition {
-        std::shared_ptr<ast::node> cond;
-        std::vector<std::shared_ptr<ast::node>> body;
-      };
-
-      bool has_default = false;
-
-      std::vector<condition> conds;
+      std::shared_ptr<ast::node> cond;
+      std::shared_ptr<ast::node> true_expr;
+      std::shared_ptr<ast::node> false_expr = nullptr;
       NODE_FOOTER;
     };
 

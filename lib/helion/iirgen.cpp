@@ -24,9 +24,46 @@ iir::value *ast::number::to_iir(iir::builder &b, iir::scope *sc) {
 }
 
 
+
+static iir::value *compile_assign(iir::builder &b, iir::scope *sc,
+                                  std::shared_ptr<ast::node> to_n,
+                                  std::shared_ptr<ast::node> val_n) {
+  using namespace iir;
+
+  auto val = val_n->to_iir(b, sc);
+
+
+  value *dst = nullptr;
+
+
+  if (auto var = to_n->as<ast::var *>()) {
+    std::string name = var->str();
+    dst = sc->find_binding(name);
+    if (dst == nullptr) throw std::logic_error("unable to find var in assignment");
+
+    b.create_store(dst, val);
+    return val;
+  }
+
+
+
+  throw std::logic_error("failed to create assignment, invalid lhs");
+
+}
+
+
+
+
 iir::value *ast::binary_op::to_iir(iir::builder &b, iir::scope *sc) {
+  // assignment is a special case of the binary op, as normally destinations
+  // return the value of a variable, instead of a reference to its storage
+  // location
+  if (this->op == "=") return compile_assign(b, sc, left, right);
+
   auto lhs = left->to_iir(b, sc);
   auto rhs = right->to_iir(b, sc);
+
+
 
 
   if (this->op == "+") return b.create_binary(iir::inst_type::add, rhs, lhs);
@@ -48,7 +85,14 @@ iir::value *ast::subscript::to_iir(iir::builder &b, iir::scope *sc) {
 }
 
 iir::value *ast::call::to_iir(iir::builder &b, iir::scope *sc) {
-  return nullptr;
+  auto callee = func->to_iir(b, sc);
+
+  std::vector<iir::value *> args;
+  for (auto &arg : this->args) {
+    args.push_back(arg->to_iir(b, sc));
+  }
+
+  return b.create_call(callee, args);
 }
 
 iir::value *ast::tuple::to_iir(iir::builder &b, iir::scope *sc) {
@@ -69,7 +113,28 @@ iir::value *ast::nil::to_iir(iir::builder &b, iir::scope *sc) {
 }
 
 iir::value *ast::do_block::to_iir(iir::builder &b, iir::scope *sc) {
-  return nullptr;
+  auto join = b.new_block();
+
+  auto nb = b.new_block();
+  b.create_jmp(nb);
+
+  auto ns = sc->spawn();
+
+  b.insert_block(nb);
+
+
+  iir::value *last_expr = nullptr;
+  for (auto &s : exprs) {
+    last_expr = s->to_iir(b, ns);
+  }
+
+
+
+  b.create_jmp(join);
+  b.insert_block(join);
+
+  b.set_target(join);
+  return last_expr;
 }
 
 iir::value *ast::return_node::to_iir(iir::builder &b, iir::scope *sc) {
@@ -105,6 +170,10 @@ iir::value *ast::var_decl::to_iir(iir::builder &b, iir::scope *sc) {
 iir::value *ast::var::to_iir(iir::builder &b, iir::scope *sc) {
   std::string name = str();
   iir::value *v = sc->find_binding(name);
+  if (v == nullptr) {
+    puts(name);
+    throw std::logic_error("variable not found");
+  }
   return b.create_load(v);
 }
 
@@ -124,14 +193,13 @@ iir::value *ast::func::to_iir(iir::builder &b, iir::scope *sc) {
   fn->add_block(bb);
   b2.set_target(bb);
 
-  for (auto &arg: proto->args) {
+  for (auto &arg : proto->args) {
     std::string name = arg->name;
     auto ty = iir::convert_type(arg->type);
     auto pop = b2.create_poparg(*ty);
     pop->set_name(name);
     ns->bind(name, pop);
   }
-
   for (auto &e : stmts) {
     e->to_iir(b2, ns);
   }
@@ -144,42 +212,50 @@ iir::value *ast::def::to_iir(iir::builder &b, iir::scope *sc) {
 }
 
 iir::value *ast::if_node::to_iir(iir::builder &b, iir::scope *sc) {
-  iir::block *final_join = b.new_block();
-
-  for (auto cond : conds) {
-    iir::block *body = b.new_block();
-    iir::block *join = nullptr;
+  puts(str());
+  auto cond_val = cond->to_iir(b, sc);
 
 
-    if (cond.cond != nullptr) {
-      auto cond_val = cond.cond->to_iir(b, sc);
-      join = b.new_block();
-      b.create_branch(cond_val, body, join);
-    } else {
-      b.create_jmp(body);
-    }
+  if (false_expr == nullptr) {
+    auto if_true = b.new_block("if_true");
+    auto join = b.new_block("if_join");
 
+    b.create_branch(cond_val, if_true, join);
 
+    b.set_target(if_true);
+    b.insert_block(if_true);
 
-    b.insert_block(body);
-    b.set_target(body);
+    true_expr->to_iir(b, sc);
 
-    auto ns = sc->spawn();
-    for (auto &s : cond.body) {
-      s->to_iir(b, ns);
-    }
+    b.create_jmp(join);
+    b.insert_block(join);
+    b.set_target(join);
+  } else {
+    auto if_true = b.new_block("if_true");
+    auto if_false = b.new_block("if_false");
+    auto if_join = b.new_block("if_join");
 
+    // in entry, create branch
+    b.create_branch(cond_val, if_true, if_false);
 
-    if (join != nullptr) {
-      b.insert_block(join);
-      b.create_jmp(join);
-      b.set_target(join);
-    } else {
-      b.create_jmp(final_join);
-      b.set_target(final_join);
-    }
+    // switch to if_true branch and codegen it w/ a jmp to join
+    b.insert_block(if_true);
+    b.set_target(if_true);
+    true_expr->to_iir(b, sc);
+    b.create_jmp(if_join);
+
+    // do the same for if_false
+    b.insert_block(if_false);
+    b.set_target(if_false);
+    false_expr->to_iir(b, sc);
+    b.create_jmp(if_join);
+
+    // and set the target to the join
+    b.insert_block(if_join);
+    b.set_target(if_join);
+
   }
-  b.insert_block(final_join);
+
 
   return nullptr;
 }

@@ -14,6 +14,11 @@ SET(CMAKE_ASM_FLAGS "${CFLAGS} -x assembler-with-cpp")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DBUILD_MODE=Debug -fno-omit-frame-pointer")
 set(CMAKE_C_FLAGS_DEBUG "-g -O0 -DBUILD_MODE=Debug -fno-omit-frame-pointer")
 
+
+# set(CMAKE_CXX_FLAGS_RELEASE "-g0 -O3 -flto -DBUILD_MODE=Release -ffunction-sections -Wl,-dead_strip")
+# set(CMAKE_C_FLAGS_RELEASE   "-g0 -O3 -flto -DBUILD_MODE=Release -ffunction-sections -Wl,-dead_strip")
+
+
 set(CMAKE_CXX_FLAGS_RELEASE "-g0 -O3 -flto -DBUILD_MODE=Release")
 set(CMAKE_C_FLAGS_RELEASE   "-g0 -O3 -flto -DBUILD_MODE=Release")
 
@@ -47,5 +52,5 @@ target_compile_options(helion PRIVATE -Wall -Wno-unused-function -Wno-sign-compa
 
 
 install(TARGETS helion DESTINATION bin CONFIGURATIONS Release)
-install(TARGETS helion-lib DESTINATION lib CONFIGURATIONS Release)
-install(TARGETS helion-a DESTINATION lib CONFIGURATIONS Release)
+# install(TARGETS helion-lib DESTINATION lib CONFIGURATIONS Release)
+# install(TARGETS helion-a DESTINATION lib CONFIGURATIONS Release)

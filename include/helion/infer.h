@@ -23,9 +23,7 @@ namespace helion {
 
     iir::type *find(iir::type *t);
 
-
     void do_union(iir::var_type *, iir::type*);
-
 
     void unify(iir::type *, iir::type *);
 

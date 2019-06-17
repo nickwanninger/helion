@@ -387,31 +387,15 @@ text ast::if_node::str(int depth) {
   for (int i = 0; i < depth; i++) indent += "  ";
 
 
-  bool printed_if = false;
-  for (size_t i = 0; i < conds.size(); i++) {
-    auto& c = conds[i];
+  s += "if ";
+  s += cond->str();
+  s += " then ";
+  s += true_expr->str(depth);
 
-    if (printed_if) {
-      s += indent;
-    }
-
-    if (c.cond) {
-      s += !printed_if ? "if " : "elif ";
-      printed_if = true;
-      s += c.cond->str();
-      s += " then\n";
-
-    } else {
-      s += "else\n";
-    }
-    for (auto& e : c.body) {
-      s += indent;
-      s += "  ";
-      s += e->str(depth + 1);
-      s += "\n";
-    }
+  if (false_expr != nullptr) {
+    s += " else ";
+    s += false_expr->str(depth);
   }
-  s += indent;
-  s += "end";
+
   return s;
 }

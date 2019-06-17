@@ -6,9 +6,10 @@
 #include <helion/core.h>
 #include <helion/gc.h>
 #include <helion/iir.h>
+#include <helion/infer.h>
+#include <fstream>
 #include <iostream>
 #include <unordered_map>
-#include <helion/infer.h>
 
 
 using namespace helion;
@@ -225,17 +226,13 @@ module *helion::compile_module(std::unique_ptr<ast::module> m) {
   auto mod = std::make_unique<module>();
 
 
-
+  /*
   ptr_set<iir::type *> types;
-
   while (!std::cin.eof()) {
-
-
     puts("Enter two types:");
     std::cout << "  t1> ";
     std::string src1;
     std::getline(std::cin, src1);
-
 
     std::cout << "  t2> ";
     std::string src2;
@@ -255,19 +252,16 @@ module *helion::compile_module(std::unique_ptr<ast::module> m) {
       puts(e.what());
     }
   }
-
   die();
+  */
+
 
 
 
   // imod is a module in the intermediate representation
   iir::module imod("some_module");
 
-
-  /*
-  imod.create_intrinsic("__intrinsic_add", ast::parse_type("Int -> Int -> Int"))
-      ->print(std::cout);
-      */
+  imod.create_intrinsic("add_sim", ast::parse_type("a -> a -> a"));
 
 
   // create a function that will be the 'init' function of this module
@@ -277,7 +271,7 @@ module *helion::compile_module(std::unique_ptr<ast::module> m) {
   iir::builder b(*fn);
 
   auto bb = fn->new_block();
-  // fn->set_type(iir::convert_type(ast::parse_type("Void -> Void")));
+  fn->set_type(*iir::convert_type("Void -> Void"));
   fn->add_block(bb);
   b.set_target(bb);
 
@@ -287,7 +281,14 @@ module *helion::compile_module(std::unique_ptr<ast::module> m) {
 
 
   fn->print(std::cout);
-  puts();
+  std::cout << std::endl;
+
+  return nullptr;
+
+  std::ofstream myfile;
+  myfile.open("example.ssa");
+  myfile << std::endl;
+  myfile.close();
 
 
   return nullptr;
