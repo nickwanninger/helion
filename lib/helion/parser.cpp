@@ -195,33 +195,43 @@ static presult parse_expr(pstate s, scope *sc, bool do_binary) {
   token begin = s;
   auto res = pfail(s);
 
+  // macro explanations:
+  //
+  // TRY: try to parse the thing, and expand later
+  // TRY_NO_EXPAND: try, but don't expand, used for statements like functions,
+  // def, if, return.., things that shouldn't be called or used in math
+
 #define TRY(expr)                \
   {                              \
     res = expr;                  \
     if (res) goto parse_success; \
   }
 
-#define TRY_NO_EXPAND(expr)   \
-  {                      \
-    res = expr;          \
-    if (res) return res; \
+#define TRY_NO_EXPAND(expr) \
+  {                         \
+    res = expr;             \
+    if (res) return res;    \
   }
 
+
+
   if (!res && begin.type == tok_num) TRY_NO_EXPAND(parse_num(s, sc));
-  // try to parse a function literal
-  if (!res && begin.type == tok_left_paren) TRY_NO_EXPAND(parse_function_literal(s, sc));
+  if (!res && begin.type == tok_left_paren)
+    TRY_NO_EXPAND(parse_function_literal(s, sc));
   if (!res && begin.type == tok_left_paren) TRY(parse_paren(s, sc));
   if (!res && begin.type == tok_var) TRY(parse_var(s, sc));
-  // if (!res && begin.type == tok_str) TRY(parse_str(s, sc));
-  // if (!res && begin.type == tok_keyword) TRY(parse_keyword(s, sc));
   if (!res && begin.type == tok_do) TRY(parse_do(s, sc));
   if (!res && begin.type == tok_left_curly) TRY(parse_do(s, sc));
   if (!res && begin.type == tok_return) TRY_NO_EXPAND(parse_return(s, sc));
-  // if (!res && begin.type == tok_nil) TRY(parse_nil(s, sc));
   if (!res && begin.type == tok_if) TRY_NO_EXPAND(parse_if(s, sc));
-  if (!res && begin.type == tok_def) TRY(parse_def(s, sc));
-  if (!res && begin.type == tok_typedef) TRY(parse_typedef(s, sc));
-  if (!res && begin.type == tok_let) TRY(parse_let(s, sc));
+  if (!res && begin.type == tok_def) TRY_NO_EXPAND(parse_def(s, sc));
+  if (!res && begin.type == tok_typedef) TRY_NO_EXPAND(parse_typedef(s, sc));
+  if (!res && begin.type == tok_let) TRY_NO_EXPAND(parse_let(s, sc));
+
+  // stuff the compiler does't support yet...
+  // if (!res && begin.type == tok_nil) TRY(parse_nil(s, sc));
+  // if (!res && begin.type == tok_str) TRY(parse_str(s, sc));
+  // if (!res && begin.type == tok_keyword) TRY(parse_keyword(s, sc));
 
 parse_success:
   if (!res) {
@@ -1189,7 +1199,6 @@ static presult parse_let(pstate s, scope *sc) {
 
     // attempt to parse a type
     auto tp = parse_type(s, sc);
-
 
     if (tp) {
       has_type = true;

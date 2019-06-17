@@ -257,7 +257,6 @@ module *helion::compile_module(std::unique_ptr<ast::module> m) {
 
 
 
-
   // imod is a module in the intermediate representation
   iir::module imod("some_module");
 
