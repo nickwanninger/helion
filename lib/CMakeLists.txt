@@ -13,16 +13,13 @@ message(STATUS "LLVM_LIBS: ${LLVM_LIBS}")
 
 
 add_library(helion-obj OBJECT
-	lib/helion/datatype.cpp
 	lib/helion/text.cpp
 	lib/helion/ast.cpp
 	lib/helion/compiler.cpp
-	lib/helion/module.cpp
 	lib/helion/tokenizer.cpp
 	lib/helion/codegen.cpp
 	lib/helion/ojit_ee.cpp
 	lib/helion/gc.cpp
-	lib/helion/method.cpp
 	lib/helion/parser.cpp
 	lib/helion/iir.cpp
 	lib/helion/iirbuilder.cpp

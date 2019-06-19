@@ -15,6 +15,12 @@ using namespace helion::iir;
 
 
 
+void helion::init_types(void) {
+
+}
+
+
+
 bool iir::operator==(type &a, type &b) {
   auto hf = std::hash<type>();
   return hf(a) == hf(b);

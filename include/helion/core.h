@@ -82,25 +82,31 @@ namespace helion {
     class func;
   };  // namespace ast
 
+
+
+  namespace iir {
+    class module;
+  };
+
   extern llvm::LLVMContext llvm_ctx;
 
   struct binding;
   struct datatype_name;
   struct datatype;
 
-
-  extern datatype *any_type;
-  extern datatype *bool_type;
-  extern datatype *int8_type;
-  extern datatype *int16_type;
-  extern datatype *int32_type;
-  extern datatype *int64_type;
-  extern datatype *integer_type;
-  extern datatype *float32_type;
-  extern datatype *float64_type;
-  extern datatype *datatype_type;
-
-  extern datatype *generic_ptr_type;
+  /*
+    extern datatype *any_type;
+    extern datatype *bool_type;
+    extern datatype *int8_type;
+    extern datatype *int16_type;
+    extern datatype *int32_type;
+    extern datatype *int64_type;
+    extern datatype *integer_type;
+    extern datatype *float32_type;
+    extern datatype *float64_type;
+    extern datatype *datatype_type;
+    extern datatype *generic_ptr_type;
+    */
 
 
   // a value is an opaque pointer to something garbage collected in the helion
@@ -112,13 +118,13 @@ namespace helion {
 
   // global_binding is an opaque pointer to a global variable binding which is
   // managed as an LLVM type later on.
-  struct global_binding;
+  // struct global_binding;
 
   // we use LLVM structs to represent global variables, so we have to JIT some
   // LLVM functions to access the fields of the struct. Therefore, we have
   // global variable bindings to those functions after they are generated :)
   // TODO: please find a way to not do this.
-  extern std::function<global_binding *()> create_global_binding;
+  // extern std::function<global_binding *()> create_global_binding;
 
 
 
@@ -140,113 +146,6 @@ namespace helion {
   };
 
 
-  struct typeinfo {
-    type_style style = type_style::OBJECT;
-    text name;
-    // how many bits this type is in memory (for primitive types)
-    int bits;
-    // a type is specialized iff it's parameters are filled in correctly
-    bool specialized = false;
-    // the super type of this type. Defaults to any_type
-    datatype *super;
-    // list of parameter names
-    slice<text> param_names;
-    // garbage collected list of specializations
-    slice<datatype *> specializations;
-    // the definition of this type (can only be one)
-    ast::typedef_node *def;
-    std::mutex lock;
-    datatype *specialize(slice<datatype *> &, cg_scope *);
-    datatype *specialize(cg_scope *);
-  };
-
-
-
-
-  // the datatype representation in the engine
-  struct datatype {
-    struct field {
-      datatype *type;
-      text name;
-    };
-    bool specialized = false;
-    bool completed = false;
-    typeinfo *ti;
-    // declaration of the type in LLVM as an llvm::Type
-    llvm::Type *type_decl = nullptr;
-    slice<field> fields;
-    slice<datatype *> param_types;
-    // used in the method type
-    datatype *return_type = nullptr;
-
-    text mangled_name(void);
-
-    /**
-     * methods
-     */
-
-    void add_field(text, datatype *);
-    llvm::Type *to_llvm(bool for_storage = false);
-
-    text str(void);
-    // constructors
-    static datatype *create(text, datatype & = *any_type, slice<text> = {});
-    static datatype *from(llvm::Value *v);
-    static datatype *from(llvm::Type *t);
-    static datatype *create_integer(text, int);
-    static datatype *create_float(text, int);
-    static datatype *create_struct(text);
-    static datatype *create_buffer(int);
-    static datatype *create(text, llvm::Type *);
-    static inline datatype *create(text n, slice<text> p) {
-      return datatype::create(n, *any_type, p);
-    };
-    template <typename T>
-    static inline datatype *create_placeholder(void) {
-      return create_buffer(sizeof(T));
-    }
-
-    inline datatype *spawn_spec() {
-      auto n = gc::make_collected<datatype>(*this);
-      n->specialized = true;
-      ti->specializations.push_back(n);
-      return n;
-    }
-
-
-    // real constructors. DON'T USE
-    inline datatype(text name, datatype &s) {
-      ti = gc::make_collected<typeinfo>();
-      ti->name = name;
-      ti->super = &s;
-    }
-    inline datatype(typeinfo *t) : ti(t) {}
-
-
-    inline bool is_obj() { return ti->style == type_style::OBJECT; }
-    inline bool is_int() { return ti->style == type_style::INTEGER; }
-    inline bool is_flt() { return ti->style == type_style::FLOATING; }
-    inline bool is_union() { return ti->style == type_style::UNION; }
-    inline bool is_tuple() { return ti->style == type_style::TUPLE; }
-    inline bool is_method() { return ti->style == type_style::METHOD; }
-    inline bool is_slice() { return ti->style == type_style::SLICE; }
-    inline bool is_struct() { return ti->style == type_style::STRUCT; }
-
-    inline datatype *specialize(slice<datatype *> s, cg_scope *sc) {
-      return ti->specialize(s, sc);
-    }
-  };
-
-
-
-
-
-
-
-
-  class module;
-  class method_instance;
-
   // forward decl of codegen structs
   struct cg_binding;
   /**
@@ -256,9 +155,6 @@ namespace helion {
    public:
     llvm::IRBuilder<> builder;
     llvm::Function *func = nullptr;
-    helion::module *module = nullptr;
-    // what method instance is this compiling?
-    method_instance *linfo;
     cg_ctx(llvm::LLVMContext &llvmctx) : builder(llvmctx) {}
   };
 
@@ -281,53 +177,11 @@ namespace helion {
     std::vector<std::unique_ptr<cg_scope>> children;
 
    public:
-    module *mod;
 
     cg_scope *spawn();
     llvm::Value *find_binding(std::string &name);
     inline void set_binding(std::string name, llvm::Value *v) {
       m_bindings[name] = v;
-    }
-
-    // type lookups
-    datatype *find_type(std::string);
-    inline void set_type(std::string name, datatype *T) {
-      // just store in the map
-      m_types[name] = T;
-    }
-    inline void set_type(datatype *T) { set_type(T->ti->name, T); }
-
-    datatype *find_val_type(llvm::Value *);
-    inline void set_val_type(llvm::Value *val, datatype *t) {
-      m_val_types[val] = t;
-    }
-
-    inline text str(int depth = 0) {
-      text indent = "";
-      for (int i = 0; i < depth; i++) indent += "  ";
-      text s;
-      for (auto &t : m_types) {
-        s += indent;
-        s += t.first;
-        s += " : ";
-        s += t.second->str();
-        s += "\n";
-      }
-      for (auto &c : children) {
-        s += c->str(depth + 1);
-      }
-      return s;
-    }
-
-
-    inline void print_types() {
-      for (auto &t : m_types) {
-        puts(t.first, "=", t.second->str());
-      }
-      if (m_parent != nullptr) {
-        puts("--------");
-        m_parent->print_types();
-      }
     }
 
     inline void set_parent(cg_scope *s) { m_parent = s; }
@@ -434,99 +288,15 @@ namespace helion {
   // make sense for the use-cases of helion
   extern ojit_ee *execution_engine;
 
-  /**
-   * A method signature represents the type of a signature at runtime. It is
-   * used to represent return types and argument types. Each method_signature is
-   * stored and owned by a static map in `method.cpp`, and method signatures are
-   * handled by an int64. The reason for this abstraction is because at runtime,
-   * there needs to be efficient lookup of these method signatures in methods
-   * because lambdas should have specializations compiled at runtime as they are
-   * needed. This is not really a problem for top level defs, as we can
-   * statically determine this information
-   */
-  struct method_signature {
-    datatype *return_type;
-    std::vector<datatype *> arguments;
-  };
-
-
-  class module;
-  class method_instance;
-
-  class method {
-   public:
-    // sig_handles are an efficient index into a set that can be used at
-    // runtime. They can be used to request a certain method instance from a
-    // method at runtime instead of having to store the entire call type.
-    using sig_handle = int64_t;
-    cg_scope *scope;
-    std::string name;
-    std::string file;
-    // a simple list of the ast nodes that define entry points to this method
-    // for example, if a function is defined more than once, each of the
-    // overloads go into this vector. When an implementation is needed at
-    // compile time, the compiler will go through this list to find a best-fit.
-    // Unfortunately, this means there could be ambiguity in choosing a method
-    // that we will have to resolve later down the line
-    std::vector<std::shared_ptr<ast::func>> definitions;
-    // table of all method_instance specializations that we've compiled
-    std::vector<method_instance *> specializations;
-
-    // stringification function
-    text str();
-    // constructor
-    method(module *);
-    // get a method instance specialization for a set of argument types
-    // Returns null returns null when a spec cannot be found or there
-    // is an ambiguous set of arguments
-    method_instance *specialize(std::vector<datatype *>);
-
-   private:
-    module *mod;
-    std::mutex lock;
-
-    // A mapping from signature handles to instances.
-    ska::flat_hash_map<method::sig_handle, method_instance *> instances;
-  };
-
-  class method_instance {
-    // cached reference to the function
-    llvm::Function *func;
-
-   public:
-    // what method is this an instance of?
-    method *of;
-    datatype *return_type;
-    std::vector<datatype *> arg_types;
-
-    llvm::Function *codegen(cg_ctx &, cg_scope *);
-  };
-
-
-  llvm::Function *compile_method(method_instance *, cg_scope *, llvm::Module *);
-
-
-  class module {
-    // module *parent = nullptr;
-    text name;
-
-    std::vector<std::unique_ptr<method>> method_table;
-    // a hashmap from names to methods, so `defs` can overload similar names
-    ska::flat_hash_map<std::string, method *> overload_lookup;
-
-   public:
-    // represents the global scope for this module
-    cg_scope *scope;
-  };
-
-
 
   std::string get_next_param_name(void);
   void register_param_name_as_used(std::string);
 
 
-  module *compile_module(std::unique_ptr<ast::module> m);
-
+  /**
+   * convert an ast module into an intermediate representation module
+   */
+  iir::module *compile_module(std::unique_ptr<ast::module> m);
 
   void init_types(void);
   void init_codegen(void);

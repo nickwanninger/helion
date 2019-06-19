@@ -1,5 +1,5 @@
 let f = (a1: a, a2: b): z -> w => {
-	return (a3): b => {
+	return (a3: a): b => {
 		return 3.14
 	}
 }
