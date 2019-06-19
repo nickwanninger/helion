@@ -74,8 +74,8 @@ namespace helion {
 
     class unify_error : std::runtime_error {
      public:
-      unify_error(iir::type *t1, iir::type *t2)
-          : std::runtime_error("failure unifying types"), t1(t1), t2(t2) {}
+      unify_error(iir::type *t1, iir::type *t2, std::string err)
+          : std::runtime_error(err), t1(t1), t2(t2) {}
       iir::type *t1, *t2;
     };
   };  // namespace infer

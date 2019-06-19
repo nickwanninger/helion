@@ -1,6 +1,5 @@
-def f(x: a, y: b): a
-	let func = (x: a): b => {
+let f = (a1: a, a2: b): z -> w => {
+	return (a3): b => {
 		return 3.14
 	}
-	return 0
-end
+}

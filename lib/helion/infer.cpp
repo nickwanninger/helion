@@ -11,14 +11,29 @@ using namespace helion;
 
 
 
+static bool has_var_type_definition(iir::type *t) {
+  if (t->is_var()) {
+    if (t->as_var()->points_to == t) return true;
+  }
+
+  if (t->is_named()) {
+    auto n = t->as_named();
+    for (auto &p : n->params) {
+      if (has_var_type_definition(p)) return true;
+    }
+  }
+  return false;
+}
+
+
 // find the real type for some type. Basically expands the type
 // variable into its real named variable
 iir::type *infer::find(iir::type *t) {
   if (t->is_var()) {
     auto tv = t->as_var();
     if (tv->points_to != tv) {
-      tv->points_to = find(tv->points_to);
-      return tv->points_to;
+      // tv->points_to = find(tv->points_to);
+      return find(tv->points_to);
     }
   }
   return t;
@@ -45,20 +60,25 @@ static bool occurs(iir::var_type *ta, iir::type *tb) {
 }
 
 
+
+
 void infer::do_union(iir::var_type *ta, iir::type *tb) {
   if (*ta == *tb) return;
-
-  if (occurs(ta, tb)) {
-    throw std::logic_error("no rec type please");
-  }
+  // check for recursive types, can't quite do that yet
+  if (occurs(ta, tb))
+    throw infer::unify_error(ta, tb, "recursive type breaks unification");
   ta->points_to = tb;
 }
+
+
 
 
 void infer::unify(iir::type *ta, iir::type *tb) {
   // drop the types to their lowest forms
   auto t1 = find(ta);
   auto t2 = find(tb);
+
+  // puts("unify", t1->str(), "and", t2->str());
 
   if (is_arrow(t1) && is_arrow(t2)) {
     auto f1 = t1->as_named();
@@ -84,7 +104,7 @@ void infer::unify(iir::type *ta, iir::type *tb) {
     auto n1 = t1->as_named();
     auto n2 = t2->as_named();
     if (n1->name != n2->name || n1->params.size() != n2->params.size()) {
-      throw infer::unify_error(t1, t2);
+      throw infer::unify_error(t1, t2, "type mismatch");
     }
 
     for (int i = 0; i < n1->params.size(); i++) {
@@ -93,88 +113,30 @@ void infer::unify(iir::type *ta, iir::type *tb) {
     return;
   }
 
+
+  if (t1->is_var() && t2->is_var()) {
+    auto tv = t1->as_var();
+    tv->points_to = t2;
+    return;
+  }
+
+
+
   if (t1->is_var()) {
     auto tv = t1->as_var();
-    do_union(tv, tb);
+    puts("here");
+    do_union(tv, t2);
     return;
   }
 
   if (t2->is_var()) {
     auto tv = t2->as_var();
-    do_union(tv, ta);
+    do_union(tv, t1);
     return;
   }
 
-  if (*t1 != *t2) throw std::logic_error("unify error, type mismatch");
+  if (*t1 != *t2) throw unify_error(t1, t2, "unify error, type mismatch");
 };
-
-
-
-
-/*
-def Inst(t: Type, ctx: Context): Type = {
-  val bindVar = ctx.values.toSet
-  val gen = new collection.mutable.HashMap[TVar, TVar]
-    def reify(t: Type): Type = { // Try to iterate all free TVar of the type
-      Find(t) match {
-        case tv: TVar => {
-          if (!bindVar.contains(tv)) gen.getOrElseUpdate(tv, MakeFreshTVar())
-          else tv
-        }
-        case Arrow(t1, t2) => Arrow(reify(t1), reify(t2))
-        case _ => t
-      }
-    }
-  reify(t)
-}
-*/
-
-
-
-/*
-static auto reify(iir::type *t, infer::context ctx,
-                  std::unordered_map<iir::type&, iir::type&> &gen)
-    -> iir::type * {
-  auto found = infer::find(t);
-  if (found->is_var()) {
-    auto tv = found->as_var();
-
-
-    auto begin = ctx.begin();
-
-    auto end = ctx.end();
-
-    for (auto it = begin; it != end; it++) {
-      if (*(*it).second == *t) return tv;
-    }
-
-    if (gen.count(tv) == 0) {
-      auto v = &iir::new_variable_type();
-      gen.insert(tv, v);
-      return v;
-    }
-    return &gen[*tv];
-    // If it is a polytype (generic type), that is, not bind by the context
-    // create a new Type variable to be subst free.
-  }
-
-  if (is_arrow(t)) {
-    auto arr = t->as_named();
-    std::vector<iir::type *> np;
-    for (auto &p : arr->params) np.push_back(reify(p, ctx, gen));
-    return gc::make_collected<iir::named_type>("->", np);
-  }
-
-  return t;
-}
-
-*/
-
-iir::type *infer::inst(iir::type *t, context &ctx) {
-  return t;
-  // auto gen = std::unordered_map<iir::type&, iir::type&>();
-  // return reify(t, ctx, gen);
-}
 
 
 
@@ -195,24 +157,20 @@ static infer::deduction deduce_ret(infer::context &gamma,
   // expression
   auto val = ins->args[0];
   auto vd = val->deduce(gamma);
-  try {
-    infer::unify(vd.type, gamma.fn->return_type());
-  } catch (infer::unify_error &e) {
-    die("UNIFICATION OF RETURN TYPE FAILED");
-  }
-
+  infer::unify(vd.type, gamma.fn->return_type());
   return vd;
 }
 
 
 
 
+// simple local allocation, usually on the stack. value is simply the type it is
+// allocating for
 static infer::deduction deduce_alloc(infer::context &gamma,
                                      iir::instruction *ins) {
   gamma[ins] = &ins->get_type();
   return {&ins->get_type()};
 }
-
 
 
 static infer::deduction deduce_store(infer::context &gamma,
@@ -238,7 +196,7 @@ static infer::deduction deduce_store(infer::context &gamma,
 
 
 static infer::deduction deduce_load(infer::context &gamma,
-                                     iir::instruction *ins) {
+                                    iir::instruction *ins) {
   auto src = ins->args[0];
   src->deduce(gamma);
   gamma[ins] = &src->get_type();
@@ -246,6 +204,20 @@ static infer::deduction deduce_load(infer::context &gamma,
 }
 
 
+
+
+static infer::deduction deduce_call(infer::context &gamma,
+                                    iir::instruction *ins) {
+  // create an un-scoped variable type to represent the return type
+  // of the function. We will unify this to figure out what it should be in the
+  // end
+  auto ret_type = &iir::new_variable_type();
+
+
+
+  gamma[ins] = ret_type;
+  return {ret_type};
+}
 
 
 
@@ -269,10 +241,13 @@ infer::deduction iir::instruction::deduce(infer::context &gamma) {
     case inst_type::load:
       return deduce_load(gamma, this);
 
+
+    case inst_type::call:
+      return deduce_call(gamma, this);
+
     case inst_type::br:
     case inst_type::jmp:
     case inst_type::global:
-    case inst_type::call:
     case inst_type::add:
     case inst_type::sub:
     case inst_type::mul:
@@ -317,6 +292,15 @@ infer::deduction iir::func::deduce(infer::context &G) {
     b->deduce(gamma);
   }
   G[this] = &get_type();
+
+
+  auto ret = get_type().as_named()->params[1];
+
+  if (has_var_type_definition(ret)) {
+    puts("Cannot declare type variable in return type");
+    throw infer::analyze_failure(this);
+  }
+
 
   // TODO:
   // run over all the blocks and do some kind of substitution i guess

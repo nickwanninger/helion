@@ -188,7 +188,18 @@ iir::value *ast::func::to_iir(iir::builder &b, iir::scope *sc) {
     ns->bind(name, pop);
   }
 
-  stmt->to_iir(b2, ns);
+  // if the value of the function is not a do block, it must be an implicit
+  // return of sorts.
+  // if not a block, compile a return node instead
+  if (auto blk = stmt->as<ast::do_block *>(); blk == nullptr) {
+    ast::return_node n(stmt->scp);
+    n.val = stmt;
+
+    n.to_iir(b2, ns);
+  } else {
+    stmt->to_iir(b2, ns);
+  }
+
   return fn;
 }
 

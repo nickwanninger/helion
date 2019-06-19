@@ -14,20 +14,6 @@ using namespace helion::iir;
 
 
 
-
-
-
-// take a type and make sure that all variable types are defined
-// as pointing to a singular instance of that type. Modifies the variable
-// my changing the points_to field on var_types
-static void singularize(type *t, iir::scope *sc) {
-  if (t->is_named()) {
-    
-  } else if (t->is_var()) {
-    
-  }
-}
-
 // some common types
 type *iir::int_type = nullptr;
 type *iir::float_type = nullptr;
@@ -96,7 +82,7 @@ void instruction::print(std::ostream &s, bool just_name, int depth) {
 
 
   if (!(itype == inst_type::ret || itype == inst_type::br ||
-        itype == inst_type::jmp)) {
+        itype == inst_type::jmp || itype == inst_type::store)) {
     print(s, true);
 
     s << ": " << get_type().str() << " = ";

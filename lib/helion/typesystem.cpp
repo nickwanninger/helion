@@ -73,7 +73,7 @@ std::string var_type::str(void) {
 
 std::string helion::get_next_param_name(void) {
   static std::atomic<int> next_type_num = 0;
-  std::string name = "%";
+  std::string name = "z";
   name += std::to_string(next_type_num++);
   return name;
 }
@@ -101,11 +101,16 @@ type *iir::convert_type(std::shared_ptr<ast::type_node> n, iir::scope *sc) {
     if (sc == nullptr) {
       die("scope cannot be null when converting a variable datatype");
     }
+
+    auto new_var = gc::make_collected<var_type>(name);
+
     // if the type is a variable, check first for a definition in the scope.
     auto found = sc->find_vtype(name);
-    if (found != nullptr) return found;
-    auto new_var = gc::make_collected<var_type>(name);
-    sc->set_vtype(name, new_var);
+    if (found != nullptr) {
+      new_var->points_to = found;
+    } else {
+      sc->set_vtype(name, new_var);
+    }
     return new_var;
   }
   throw std::logic_error("UNKNOWN TYPE IN `IIR::CONVERT_TYPE`");
