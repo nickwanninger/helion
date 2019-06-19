@@ -243,22 +243,6 @@ namespace helion {
 
 
 
-  class pattern_match_error : public std::exception {
-    std::string _msg;
-
-   public:
-    long line;
-    long col;
-
-    pattern_match_error(ast::type_node &n, datatype &with, std::string msg);
-    inline const char *what() const throw() {
-      // simply pull the value out of the msg
-      return _msg.c_str();
-    }
-  };
-
-
-
 
   class module;
   class method_instance;
@@ -350,11 +334,6 @@ namespace helion {
   };
 
   class cg_options {};
-
-
-  // attempt to pattern match a type on another type, possibly updating the
-  // scope with the parameter type names
-  void pattern_match(std::shared_ptr<ast::type_node> &, datatype *, cg_scope *);
 
 
 
@@ -526,25 +505,10 @@ namespace helion {
 
   llvm::Function *compile_method(method_instance *, cg_scope *, llvm::Module *);
 
-  // a global_variable is what helion global variables are stored in
-  struct global_variable {
-    datatype *type;
-    text name;
-    // A pointer to an unknown size of memory. Allocated
-    // when the global variable is created. It is enough to store
-    // a variable of the type in. ie: with objects, it's large enough
-    // to store a pointer. With primitives, its how many bytes that primitive
-    // is.
-    void *data;
-
-    ~global_variable();
-  };
-
 
   class module {
     // module *parent = nullptr;
     text name;
-    std::map<std::string, std::unique_ptr<global_variable>> globals;
 
     std::vector<std::unique_ptr<method>> method_table;
     // a hashmap from names to methods, so `defs` can overload similar names
@@ -553,13 +517,6 @@ namespace helion {
    public:
     // represents the global scope for this module
     cg_scope *scope;
-
-    global_variable *find(std::string);
-
-    // Returns a pointer to the cell which the value is stored in
-    void *global_create(std::string, datatype *);
-
-    method *add_method(std::shared_ptr<ast::func> &);
   };
 
 

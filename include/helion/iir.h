@@ -12,6 +12,7 @@
 #include <set>
 #include <unordered_map>
 #include "gc.h"
+#include "infer.h"
 #include "slice.h"
 
 
@@ -89,8 +90,8 @@ namespace helion {
 
 
     // defined in typesystem.cpp
-    type *convert_type(std::shared_ptr<ast::type_node>);
-    type *convert_type(std::string);
+    type *convert_type(std::shared_ptr<ast::type_node>, iir::scope*);
+    type *convert_type(std::string, iir::scope *);
 
 
 
@@ -100,6 +101,7 @@ namespace helion {
     class scope {
      protected:
       std::unordered_map<std::string, value *> m_bindings;
+      std::unordered_map<std::string, var_type *> m_var_types;
       scope *m_parent;
       std::vector<std::unique_ptr<scope>> children;
 
@@ -113,17 +115,23 @@ namespace helion {
         return p;
       }
 
-
       inline value *find_binding(std::string &name) {
         if (m_bindings.count(name) != 0) {
           return m_bindings[name];
         }
-
         if (m_parent == nullptr) return nullptr;
-
         return m_parent->find_binding(name);
       }
       inline void bind(std::string name, value *v) { m_bindings[name] = v; }
+
+      inline var_type *find_vtype(std::string name) {
+        if (m_var_types.count(name) != 0) return m_var_types[name];
+        if (m_parent == nullptr) return nullptr;
+        return m_parent->find_vtype(std::move(name));
+      }
+      inline void set_vtype(std::string name, var_type *v) {
+        m_var_types[name] = v;
+      }
     };
 
 
@@ -142,17 +150,21 @@ namespace helion {
 
       inline void set_name(std::string name) { this->name = name; }
       inline std::string get_name(void) { return name; }
+
+      virtual infer::deduction deduce(infer::context &ctx) { return {}; }
     };
 
 
     class const_int : public value {
      public:
       size_t val;
-
       inline void print(std::ostream &s, bool = false, int = 0) {
         s << std::to_string(val);
       }
+
+      infer::deduction deduce(infer::context &ctx);
     };
+
 
     class const_flt : public value {
      public:
@@ -160,12 +172,17 @@ namespace helion {
       inline void print(std::ostream &s, bool = false, int = 0) {
         s << std::to_string(val);
       }
+      infer::deduction deduce(infer::context &ctx);
     };
 
 
     value *new_int(size_t);
     value *new_float(double);
 
+
+
+    extern type *int_type;
+    extern type *float_type;
 
 
     enum class inst_type : char {
@@ -214,6 +231,8 @@ namespace helion {
       inline inst_type get_inst_type(void) { return itype; }
 
       void print(std::ostream &, bool = false, int = 0);
+
+      infer::deduction deduce(infer::context &ctx);
     };
 
 
@@ -240,6 +259,8 @@ namespace helion {
       }
 
       void print(std::ostream &, bool = false, int = 0);
+
+      infer::deduction deduce(infer::context &ctx);
     };
 
 
@@ -256,6 +277,8 @@ namespace helion {
       slice<block *> blocks;
 
      public:
+
+      scope *sc;
       std::string name = "";
       bool intrinsic = false;
 
@@ -266,6 +289,11 @@ namespace helion {
       block *new_block(void);
       void add_block(block *b);
       void print(std::ostream &, bool = false, int = 0);
+
+
+      type *return_type(void) { return get_type().as_named()->params.back(); }
+
+      infer::deduction deduce(infer::context &ctx);
     };
 
 

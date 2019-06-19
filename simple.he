@@ -1,8 +1,6 @@
-
-let test = (x: a, y: a): a => 1
-
-let use_test = (n) => {
-	return test(n, n)
-}
-
-let map = (fn: a -> b, xs: [a]): [b] => 0
+def f(x: a, y: b): a
+	let func = (x: a): b => {
+		return 3.14
+	}
+	return 0
+end

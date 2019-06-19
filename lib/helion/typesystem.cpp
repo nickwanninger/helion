@@ -71,30 +71,24 @@ std::string var_type::str(void) {
 }
 
 
-static std::atomic<int> next_type_num;
-
-
 std::string helion::get_next_param_name(void) {
-  std::string name = "t";
+  static std::atomic<int> next_type_num = 0;
+  std::string name = "%";
   name += std::to_string(next_type_num++);
   return name;
 }
+
+
 
 var_type &iir::new_variable_type(void) {
   return *gc::make_collected<var_type>(get_next_param_name());
 }
 
 
-
-type *iir::convert_type(std::shared_ptr<ast::type_node> n) {
-
+type *iir::convert_type(std::shared_ptr<ast::type_node> n, iir::scope *sc) {
   std::string name = n->name;
-
   std::vector<type *> params;
-  for (auto &p : n->params) params.push_back(convert_type(p));
-
-
-
+  for (auto &p : n->params) params.push_back(convert_type(p, sc));
 
   if (!n->parameter) {
     return gc::make_collected<named_type>(name, params);
@@ -102,12 +96,22 @@ type *iir::convert_type(std::shared_ptr<ast::type_node> n) {
     if (params.size() > 0) {
       throw std::logic_error("cannot have parameters on parameter type");
     }
-    return gc::make_collected<var_type>(name);
+
+
+    if (sc == nullptr) {
+      die("scope cannot be null when converting a variable datatype");
+    }
+    // if the type is a variable, check first for a definition in the scope.
+    auto found = sc->find_vtype(name);
+    if (found != nullptr) return found;
+    auto new_var = gc::make_collected<var_type>(name);
+    sc->set_vtype(name, new_var);
+    return new_var;
   }
   throw std::logic_error("UNKNOWN TYPE IN `IIR::CONVERT_TYPE`");
 }
 
 
-type *iir::convert_type(std::string s) {
-  return convert_type(ast::parse_type(s));
+type *iir::convert_type(std::string s, iir::scope *sc) {
+  return convert_type(ast::parse_type(s), sc);
 }

@@ -225,7 +225,6 @@ static ska::flat_hash_map<text, datatype *> datatypes_from_names;
 module *helion::compile_module(std::unique_ptr<ast::module> m) {
   auto mod = std::make_unique<module>();
 
-
   /*
   ptr_set<iir::type *> types;
   while (!std::cin.eof()) {
@@ -255,8 +254,6 @@ module *helion::compile_module(std::unique_ptr<ast::module> m) {
   die();
   */
 
-
-
   // imod is a module in the intermediate representation
   iir::module imod("some_module");
 
@@ -266,19 +263,39 @@ module *helion::compile_module(std::unique_ptr<ast::module> m) {
   // create a function that will be the 'init' function of this module
   auto *fn = gc::make_collected<iir::func>(imod);
 
-
   iir::builder b(*fn);
 
   auto bb = fn->new_block();
-  fn->set_type(*iir::convert_type("Void -> Void"));
+  fn->set_type(*iir::convert_type("Void -> Void", imod.spawn()));
   fn->add_block(bb);
   b.set_target(bb);
+
+  for (auto &glob : m->globals) {
+    glob->to_iir(b, &imod);
+  }
 
   for (auto &e : m->stmts) {
     e->to_iir(b, &imod);
   }
 
+  puts("before type inference:");
+  fn->print(std::cout);
+  std::cout << std::endl;
 
+
+
+  try {
+    infer::context gamma;
+    fn->deduce(gamma);
+  } catch (infer::analyze_failure &e) {
+    puts("failed to analyze IIR:");
+    e.val->print(std::cerr);
+    die();
+  } catch (std::exception &e) {
+    die("Fatally uncaught exception:", e.what());
+  }
+
+  puts("After type inference");
   fn->print(std::cout);
   std::cout << std::endl;
 
@@ -307,7 +324,6 @@ static datatype *declare_type(std::shared_ptr<ast::typedef_node> n,
     if (p->params.size() != 0)
       throw std::logic_error("type definition parameters must be simple names");
   }
-
   // search for the type, error if it is found
   auto *t = scp->find_type(type->name);
 
@@ -321,164 +337,5 @@ static datatype *declare_type(std::shared_ptr<ast::typedef_node> n,
   t->ti->def = gc::make_collected<ast::typedef_node>(*n);
   // store the type in the scope under it's name
   scp->set_type(name, t);
-
   return t;
-}
-
-
-
-// declare a
-static method *declare_func_def(std::shared_ptr<ast::def>, cg_scope *) {
-  return nullptr;
-}
-/**
- * attempt to pattern match the parameters of the two types.
- * This basically just requires that the two types have the same
- * number of parameters, and all of the parameters pattern match
- * successfully. Will throw
- */
-static void pattern_match_params(ast::type_node *n, datatype *on, cg_scope *s) {
-  if (n->params.size() != on->param_types.size()) {
-    throw pattern_match_error(*n, *on, "Parameter count mismatch");
-  }
-  for (size_t i = 0; i < n->params.size(); i++) {
-    pattern_match(n->params[i], on->param_types[i], s);
-  }
-}
-
-
-
-/**
- * Pattern match a simple type name. This ends up just being
- * any type_node who's type is type_style::OBJECT. It then
- * pattern matches on the parameters.
- */
-static void pattern_match_name(ast::type_node *n, datatype *on, cg_scope *s) {
-  if (n->parameter) {
-    // if the name is a parameter, we need to assign it in the scope if there
-    // already is not a type under that name
-    if (auto bound = s->find_type(n->name); bound != nullptr) {
-      throw pattern_match_error(*n, *on, "Parameter already bound");
-    }
-
-    // set the type in the scope
-    s->set_type(n->name, on);
-  } else {
-    auto bound = s->find_type(n->name);
-    if (bound != on) {
-      std::string err;
-      err += n->name;
-      err += " is bound to ";
-      err += bound->str();
-      throw pattern_match_error(*n, *on, err);
-    }
-  }
-
-  pattern_match_params(n, on, s);
-}
-
-
-
-/**
- * attempt to pattern match a slice type. Basically just pattern
- * matches on the parameters.
- */
-static void pattern_match_slice(ast::type_node *n, datatype *on, cg_scope *s) {
-  // the other type should be a slice as well
-  if (on->ti->style != type_style::SLICE)
-    throw pattern_match_error(
-        *n, *on, "Cannot pattern match slice against non-slice type");
-
-  // since slices store their types in the parameters, simply pattern match the
-  // parameters
-  pattern_match_params(n, on, s);
-}
-
-/**
- * attempt to pattern match two types. Simply an entry point into
- * multiple other places.
- */
-void helion::pattern_match(std::shared_ptr<ast::type_node> &n, datatype *on,
-                           cg_scope *s) {
-  // the type we are pattern matching on must be specialized
-  assert(on->specialized);
-
-  // Determine the type of the node. If it is a plain type reference, pattern
-  // match on it and it's parameters.
-  if (n->style == type_style::OBJECT) {
-    pattern_match_name(n.get(), on, s);
-  } else if (n->style == type_style::SLICE) {
-    pattern_match_slice(n.get(), on, s);
-  }
-}
-
-
-
-/*
- * constructor for the pattern_match_error exception type
- */
-helion::pattern_match_error::pattern_match_error(ast::type_node &n,
-                                                 datatype &with,
-                                                 std::string msg) {
-  _msg += "Failed to pattern match ";
-  _msg += n.str();
-  _msg += " with ";
-  _msg += with.str();
-  _msg += ": ";
-  _msg += msg;
-}
-
-
-
-global_variable *module::find(std::string s) {
-  if (globals.count(s) == 0) return nullptr;
-  return globals.at(s).get();
-}
-
-
-
-
-global_variable::~global_variable() { gc::free(data); }
-
-
-
-void *module::global_create(std::string name, datatype *type) {
-  auto llt = type->to_llvm();
-  auto size = data_layout.getTypeAllocSize(llt);
-  // allocate that memory using the garbage collector
-  void *data = gc::alloc(size);
-  auto glob = std::make_unique<global_variable>();
-
-  glob->name = name;
-  glob->type = type;
-  glob->data = data;
-
-  globals.emplace(name, std::move(glob));
-
-  return data;
-}
-
-
-method *module::add_method(std::shared_ptr<ast::func> &fn) {
-  method *m;
-  // first, anonymous functions area added unconditionally.
-  if (fn->anonymous) {
-    // create a unique_ptr and add it to the method table for this
-    auto mp = std::make_unique<method>(this);
-    m = mp.get();
-    method_table.push_back(std::move(mp));
-  } else {
-    // otherwise, we need to look up the method in the overload table
-    m = overload_lookup[fn->name];
-    if (m == nullptr) {
-      auto mp = std::make_unique<method>(this);
-      m = mp.get();
-      method_table.push_back(std::move(mp));
-      overload_lookup[fn->name] = m;
-    } else {
-    }
-  }
-  // push the definition to the list
-  m->definitions.push_back(fn);
-  return m;
 }

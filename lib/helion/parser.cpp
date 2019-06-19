@@ -131,35 +131,34 @@ std::unique_ptr<ast::module> helion::parse_module(pstate s) {
       for (auto v : r.vals) {
         if (auto tn = std::dynamic_pointer_cast<ast::typedef_node>(v); tn) {
           mod->typedefs.push_back(tn);
-        } else { /*
-           if (false && auto tn = std::dynamic_pointer_cast<ast::var_decl>(v);
-           tn) {
-             // adding lets to the top level needs to do some special things...
-             // First, we need to peel the value out of the decl, and put it in
-             // an explicit assignment later on. this is so you can logically
-             // use a variable before it is actually defined in the top level
-             auto val = tn->value;
-             tn->value = nullptr;
-             mod->globals.push_back(tn);
-             auto var = std::make_shared<ast::var>(tn->scp);
-             var->decl = tn;
-             auto assignment = std::make_shared<ast::binary_op>(tn->scp);
-             assignment->left = var;
-             assignment->right = val;
-             assignment->op = "=";
-             mod->stmts.push_back(assignment);
-           } else {
-           */
-          mod->stmts.push_back(v);
-          // }
+        } else {
+          if (auto tn = std::dynamic_pointer_cast<ast::var_decl>(v); tn) {
+            // adding lets to the top level needs to do some special things...
+            // First, we need to peel the value out of the decl, and put it in
+            // an explicit assignment later on. this is so you can logically
+            // use a variable before it is actually defined in the top level
+            auto val = tn->value;
+            tn->global = true;
+            mod->globals.push_back(tn);
+            auto var = std::make_shared<ast::var>(tn->scp);
+            var->decl = tn;
+
+            auto assignment = std::make_shared<ast::binary_op>(tn->scp);
+            assignment->left = var;
+            assignment->right = val;
+            assignment->op = "=";
+            mod->stmts.push_back(assignment);
+
+
+          } else {
+            mod->stmts.push_back(v);
+          }
         }
       }
 
-      // bool found = false;
       while (true) {
         if (token end = s; end.type == tok_term) {
           s++;
-          // found = true;
         } else
           break;
       }

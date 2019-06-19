@@ -12,9 +12,25 @@ using namespace helion;
 using namespace helion::iir;
 
 
+
+
+
+
+
+// take a type and make sure that all variable types are defined
+// as pointing to a singular instance of that type. Modifies the variable
+// my changing the points_to field on var_types
+static void singularize(type *t, iir::scope *sc) {
+  if (t->is_named()) {
+    
+  } else if (t->is_var()) {
+    
+  }
+}
+
 // some common types
-type *int_type = nullptr;
-type *float_type = nullptr;
+type *iir::int_type = nullptr;
+type *iir::float_type = nullptr;
 
 void helion::init_iir(void) {
   int_type = gc::make_collected<named_type>("Int");
@@ -26,6 +42,7 @@ void helion::init_iir(void) {
 type &value::get_type(void) { return *ty; };
 
 void value::set_type(type &t) { ty = &t; }
+
 
 
 
@@ -216,7 +233,8 @@ func *iir::module::create_func(std::shared_ptr<ast::func> node) {
   fc->node = node;
   fc->name = node->name;
   fc->intrinsic = false;
-  fc->set_type(*convert_type(node->proto->type));
+  fc->sc = spawn();
+  fc->set_type(*convert_type(node->proto->type, fc->sc));
   return fc;
 }
 
@@ -226,7 +244,8 @@ func *iir::module::create_intrinsic(std::string name,
   fc->node = nullptr;
   fc->name = name;
   fc->intrinsic = true;
-  fc->set_type(*convert_type(tn));
+  fc->sc = spawn();
+  fc->set_type(*convert_type(tn, fc->sc));
   bind(name, fc);
   return fc;
 }

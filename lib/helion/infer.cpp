@@ -2,6 +2,7 @@
 // MIT - See LICENSE.md file in the package.
 
 
+#include <helion/iir.h>
 #include <helion/infer.h>
 #include <stdexcept>
 
@@ -55,7 +56,6 @@ void infer::do_union(iir::var_type *ta, iir::type *tb) {
 
 
 void infer::unify(iir::type *ta, iir::type *tb) {
-
   // drop the types to their lowest forms
   auto t1 = find(ta);
   auto t2 = find(tb);
@@ -84,12 +84,7 @@ void infer::unify(iir::type *ta, iir::type *tb) {
     auto n1 = t1->as_named();
     auto n2 = t2->as_named();
     if (n1->name != n2->name || n1->params.size() != n2->params.size()) {
-      std::string err;
-      err += "unify error, type mismatch: ";
-      err += t1->str();
-      err += " and ";
-      err += t2->str();
-      throw std::logic_error(err);
+      throw infer::unify_error(t1, t2);
     }
 
     for (int i = 0; i < n1->params.size(); i++) {
@@ -112,6 +107,8 @@ void infer::unify(iir::type *ta, iir::type *tb) {
 
   if (*t1 != *t2) throw std::logic_error("unify error, type mismatch");
 };
+
+
 
 
 /*
@@ -176,5 +173,157 @@ static auto reify(iir::type *t, infer::context ctx,
 iir::type *infer::inst(iir::type *t, context &ctx) {
   return t;
   // auto gen = std::unordered_map<iir::type&, iir::type&>();
-  //return reify(t, ctx, gen);
+  // return reify(t, ctx, gen);
 }
+
+
+
+// the constant values are the easiest to work with
+infer::deduction iir::const_int::deduce(infer::context &) {
+  return {iir::int_type};
+}
+infer::deduction iir::const_flt::deduce(infer::context &) {
+  return {iir::float_type};
+}
+
+
+
+static infer::deduction deduce_ret(infer::context &gamma,
+                                   iir::instruction *ins) {
+  // returns need to know about the return type of their function, and therefore
+  // will try to unify the return type of the function with the value of this
+  // expression
+  auto val = ins->args[0];
+  auto vd = val->deduce(gamma);
+  try {
+    infer::unify(vd.type, gamma.fn->return_type());
+  } catch (infer::unify_error &e) {
+    die("UNIFICATION OF RETURN TYPE FAILED");
+  }
+
+  return vd;
+}
+
+
+
+
+static infer::deduction deduce_alloc(infer::context &gamma,
+                                     iir::instruction *ins) {
+  gamma[ins] = &ins->get_type();
+  return {&ins->get_type()};
+}
+
+
+
+static infer::deduction deduce_store(infer::context &gamma,
+                                     iir::instruction *ins) {
+  auto dst = ins->args[0];
+  auto src = ins->args[1];
+
+  auto src_ded = src->deduce(gamma);
+
+  auto dst_type = &dst->get_type();
+  auto src_type = src_ded.type;
+
+  try {
+    infer::unify(dst_type, src_type);
+  } catch (infer::unify_error &e) {
+    die("UNIFICATION OF STORE FAILED");
+  }
+
+  gamma[ins] = &dst->get_type();
+  return {&dst->get_type()};
+}
+
+
+
+static infer::deduction deduce_load(infer::context &gamma,
+                                     iir::instruction *ins) {
+  auto src = ins->args[0];
+  src->deduce(gamma);
+  gamma[ins] = &src->get_type();
+  return {&src->get_type()};
+}
+
+
+
+
+
+infer::deduction iir::instruction::deduce(infer::context &gamma) {
+  // if this instruction has already been analyzied, simply return the old value
+  // case 1 in Algorithm W
+  if (gamma.count(this) != 0) return {gamma.at(this)};
+
+  switch (itype) {
+    case inst_type::ret:
+      return deduce_ret(gamma, this);
+
+    case inst_type::alloc:
+      return deduce_alloc(gamma, this);
+
+
+    case inst_type::store:
+      return deduce_store(gamma, this);
+
+
+    case inst_type::load:
+      return deduce_load(gamma, this);
+
+    case inst_type::br:
+    case inst_type::jmp:
+    case inst_type::global:
+    case inst_type::call:
+    case inst_type::add:
+    case inst_type::sub:
+    case inst_type::mul:
+    case inst_type::div:
+    case inst_type::invert:
+    case inst_type::dot:
+    case inst_type::cast:
+    case inst_type::poparg:
+
+    default:
+      return {};
+      throw infer::analyze_failure(this);
+  }
+}
+
+infer::deduction iir::block::deduce(infer::context &gamma) {
+  // list of substs for this block
+  infer::subs S;
+  for (auto &inst : this->insts) {
+    auto ded = inst->deduce(gamma);
+    gamma[inst] = ded.type;
+    for (auto &sub : ded.S) {
+      S.push_back(sub);
+    }
+    // TODO, run subst on the subst on gamma
+  }
+
+
+  if (terminated()) {
+    terminator->deduce(gamma);
+  }
+
+  return {nullptr, S};
+}
+
+
+infer::deduction iir::func::deduce(infer::context &G) {
+  infer::context gamma;
+  gamma.fn = this;
+
+  for (auto &b : this->blocks) {
+    b->deduce(gamma);
+  }
+  G[this] = &get_type();
+
+  // TODO:
+  // run over all the blocks and do some kind of substitution i guess
+
+  return {&get_type()};
+}
+
+
+
+void infer::context::apply_subs(subs &S) { puts("applying subs"); }

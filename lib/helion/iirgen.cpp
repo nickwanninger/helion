@@ -39,7 +39,8 @@ static iir::value *compile_assign(iir::builder &b, iir::scope *sc,
   if (auto var = to_n->as<ast::var *>()) {
     std::string name = var->str();
     dst = sc->find_binding(name);
-    if (dst == nullptr) throw std::logic_error("unable to find var in assignment");
+    if (dst == nullptr)
+      throw std::logic_error("unable to find var in assignment");
 
     b.create_store(dst, val);
     return val;
@@ -48,7 +49,6 @@ static iir::value *compile_assign(iir::builder &b, iir::scope *sc,
 
 
   throw std::logic_error("failed to create assignment, invalid lhs");
-
 }
 
 
@@ -135,19 +135,21 @@ iir::value *ast::type_node::to_iir(iir::builder &b, iir::scope *sc) {
 }
 
 iir::value *ast::var_decl::to_iir(iir::builder &b, iir::scope *sc) {
-  auto *v = value->to_iir(b, sc);
-
   iir::value *dst;
-
   // if we are in the global scope, make a global
-  if (sc->mod == sc) {
-    dst = b.create_global(v->get_type());
-  } else {
-    dst = b.create_alloc(v->get_type());
+  if (global) {
+    dst = b.create_global(iir::new_variable_type());
+    dst->set_name(name);
+    sc->bind(name, dst);
+    return dst;
   }
+  auto *v = value->to_iir(b, sc);
+  dst = b.create_alloc(iir::new_variable_type());
   dst->set_name(name);
+
   sc->bind(name, dst);
   b.create_store(dst, v);
+
   return v;
 }
 
@@ -174,13 +176,13 @@ iir::value *ast::func::to_iir(iir::builder &b, iir::scope *sc) {
   auto ns = sc->spawn();
 
   auto bb = fn->new_block();
-  fn->set_type(*iir::convert_type(this->proto->type));
+  fn->set_type(*iir::convert_type(this->proto->type, ns));
   fn->add_block(bb);
   b2.set_target(bb);
 
   for (auto &arg : proto->args) {
     std::string name = arg->name;
-    auto ty = iir::convert_type(arg->type);
+    auto ty = iir::convert_type(arg->type, ns);
     auto pop = b2.create_poparg(*ty);
     pop->set_name(name);
     ns->bind(name, pop);
@@ -218,26 +220,21 @@ iir::value *ast::if_node::to_iir(iir::builder &b, iir::scope *sc) {
     auto if_true = b.new_block("if_true");
     auto if_false = b.new_block("if_false");
     auto if_join = b.new_block("if_join");
-
     // in entry, create branch
     b.create_branch(cond_val, if_true, if_false);
-
     // switch to if_true branch and codegen it w/ a jmp to join
     b.insert_block(if_true);
     b.set_target(if_true);
     true_expr->to_iir(b, sc);
     b.create_jmp(if_join);
-
     // do the same for if_false
     b.insert_block(if_false);
     b.set_target(if_false);
     false_expr->to_iir(b, sc);
     b.create_jmp(if_join);
-
     // and set the target to the join
     b.insert_block(if_join);
     b.set_target(if_join);
-
   }
 
 

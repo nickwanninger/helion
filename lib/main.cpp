@@ -67,13 +67,11 @@ int main(int argc, char **argv) {
 
 
 
-
   // print every token from the file
   text src = read_file(ep_ptr);
 
   try {
     auto res = parse_module(src, entry_point);
-    puts(res->str());
     compile_module(std::move(res));
   } catch (syntax_error &e) {
     puts(e.what());
